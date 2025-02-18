@@ -1,0 +1,3 @@
+[submodule "jaxmarl/environments/marbler/robotarium_python_simulator"]
+	path = jaxmarl/environments/marbler/robotarium_python_simulator
+	url = https://github.com/shalin-jain/robotarium_python_simulator
