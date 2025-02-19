@@ -178,10 +178,18 @@ class RobotariumEnv:
         if self.controller:
             dxu = self.controller(poses.T, actions.T)   # actions interpreted as goals for controller
 
+        # update pose
         updated_pose = self.robotarium.batch_step(poses, dxu)
-        done = jnp.full((self.num_agents), state.step >= self.max_steps)
         state = state.replace(
             p_pos=updated_pose.T,
+        )
+
+        # check for violations
+        violations = self.get_violations(state)
+        collision = violations['collision'] > 0
+        boundary = violations['boundary'] > 0
+        done = jnp.full((self.num_agents), state.step >= self.max_steps & boundary & collision)
+        state = state.replace(
             done=done,
             step=state.step + 1,
         )
@@ -209,6 +217,25 @@ class RobotariumEnv:
         """
 
         return {agent: 0 for _, agent in enumerate(self.agents)}
+
+    def get_violations(self, state: State) -> Dict[str, float]:
+        b = self.robotarium.boundaries
+        p = state.p_pos[:self.num_agents, :].T
+        N = self.num_agents
+
+        # Check boundary conditions
+        x_out_of_bounds = (p[0, :] < b[0]) | (p[0, :] > (b[0] + b[2]))
+        y_out_of_bounds = (p[1, :] < b[1]) | (p[1, :] > (b[1] + b[3]))
+        boundary_violations = jnp.where(x_out_of_bounds | y_out_of_bounds, 1, 0)
+        boundary_violations = jnp.sum(boundary_violations)
+
+        # Pairwise distance computation for collision checking
+        distances = jnp.sqrt(jnp.sum((p[:2, :, None] - p[:2, None, :])**2, axis=0))
+        
+        collision_matrix = distances < self.robotarium.collision_diameter
+        collision_violations = (jnp.sum(collision_matrix) - N) // 2 # Subtract N to remove self-collisions, divide by 2 for symmetry
+
+        return {'collision': collision_violations, 'boundary': boundary_violations}
 
     def get_obs(self, state: State) -> Dict[str, chex.Array]:
         """

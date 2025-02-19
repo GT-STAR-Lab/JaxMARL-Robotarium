@@ -36,6 +36,14 @@ class TestRobotariumEnv(unittest.TestCase):
         rewards = self.env.rewards(state)
         self.assertEqual(len(rewards), self.num_agents)
         self.assertTrue(all(reward == 0 for reward in rewards.values()))
+    
+    def test_get_violations(self):
+        _, state = self.env.reset(self.key)
+        state = state.replace(
+            p_pos = jnp.ones_like(state.p_pos)
+        )
+        violations = self.env.get_violations(state)
+        self.assertEqual(violations['collision'], 3)
 
     def test_get_obs(self):
         _, state = self.env.reset(self.key)
