@@ -1,13 +1,14 @@
 import unittest
 import jax
 import jax.numpy as jnp
-from marbler import RobotariumEnv, State
+from jaxmarl.environments.marbler.robotarium_env import RobotariumEnv, State
 
 class TestRobotariumEnv(unittest.TestCase):
     """unit tests for robotarium_env.py"""
 
     def setUp(self):
         self.num_agents = 3
+        self.batch_size = 10
         self.env = RobotariumEnv(num_agents=self.num_agents)
         self.key = jax.random.PRNGKey(0)
 
@@ -21,7 +22,7 @@ class TestRobotariumEnv(unittest.TestCase):
 
     def test_step(self):
         _, state = self.env.reset(self.key)
-        actions = {str(i): jnp.array([0.0, 0.0]) for i in range(self.num_agents)}
+        actions = {str(f'agent_{i}'): jnp.array([0.0, 0.0]) for i in range(self.num_agents)}
         new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
         self.assertEqual(len(new_obs), self.num_agents)
         self.assertIsInstance(new_state, State)
@@ -41,7 +42,7 @@ class TestRobotariumEnv(unittest.TestCase):
         observations = self.env.get_obs(state)
         self.assertEqual(len(observations), self.num_agents)
         for i in range(self.num_agents):
-            self.assertTrue(jnp.array_equal(observations[str(i)], state.p_pos.T[i]))
+            self.assertTrue(jnp.array_equal(observations[str(f'agent_{i}')], state.p_pos[i]))
 
     def test_observation_space(self):
         self.env.observation_spaces = {str(i): "obs_space" for i in range(self.num_agents)}
@@ -52,6 +53,30 @@ class TestRobotariumEnv(unittest.TestCase):
         self.env.action_spaces = {str(i): "act_space" for i in range(self.num_agents)}
         for i in range(self.num_agents):
             self.assertEqual(self.env.action_space(str(i)), "act_space")
+    
+    def test_batched_rollout(self):
+        keys = jax.random.split(self.key, self.batch_size)
+        _, state = jax.vmap(self.env.reset, in_axes=0)(keys)
+        initial_state = state
+
+        def get_action(poses):
+            return {str(f'agent_{i}'): jnp.array([0.5, 0.0]) for i in range(self.num_agents)}
+        
+        def wrapped_step(poses, unused):
+            actions = jax.vmap(get_action, in_axes=(0))(poses)
+            new_obs, new_state, rewards, dones, infos = jax.vmap(self.env.step, in_axes=(0, 0, 0))(keys, poses, actions)
+            return new_state, new_state
+
+        final_state, batch = jax.lax.scan(wrapped_step, state, None, 100)
+        
+        # check that the robot moved
+        for i in range(self.num_agents):
+            self.assertGreater(
+                jnp.sqrt(jnp.sum((final_state.p_pos.T[i][0] - initial_state.p_pos.T[i][0])**2)),
+                0
+            )
+
+        
 
 if __name__ == '__main__':
     unittest.main()

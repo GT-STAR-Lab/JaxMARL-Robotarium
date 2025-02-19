@@ -4,8 +4,16 @@ Base environment for robotarium simulator
 
 import jax
 import jax.numpy as jnp
-from rps_jax import *
-from constants import *
+import chex
+from flax import struct
+from typing import Tuple, Optional, Dict
+
+from jaxmarl.environments.marbler.constants import *
+from rps_jax.robotarium import *
+from rps_jax.robotarium_abc import *
+from rps_jax.utilities.controllers import *
+from rps_jax.utilities.barrier_certificates2 import *
+from rps_jax.utilities.misc import *
 
 @struct.dataclass
 class State:
@@ -30,19 +38,17 @@ class Controller:
         if controller not in CONTROLLERS:
             raise ValueError(f'{controller} not in supported controllers, {CONTROLLERS}')
         elif controller == 'si_position':
-            controller = create_si_position_controller(**kwargs.get('controller_args', None))
-        elif controller == 'si_pose':
-            controller = create_si_pose_controller(**kwargs.get('controller_args', None))
+            controller = create_si_position_controller(**kwargs.get('controller_args', {}))
         elif controller == 'clf_uni_position':
-            controller = create_clf_unicycle_position_controller(**kwargs.get('controller_args', None))
+            controller = create_clf_unicycle_position_controller(**kwargs.get('controller_args', {}))
         elif controller == 'clf_uni_pose':
-            controller = create_clf_unicycle_pose_controller(**kwargs.get('controller_args', None))
+            controller = create_clf_unicycle_pose_controller(**kwargs.get('controller_args', {}))
 
         
         if barrier_fn not in BARRIERS:
             raise ValueError(f'{controller} not in supported controllers, {CONTROLLERS}')
         elif barrier_fn == 'robust_barriers':
-            barrier_fn = create_robust_barriers(**kwargs.get(barrier_args), None)
+            barrier_fn = create_robust_barriers(**kwargs.get('barrier_args', {}))
 
         self.controller = controller
         self.barrier_fn = barrier_fn
@@ -59,12 +65,13 @@ class Controller:
             (jnp.ndarray) 2xN unicycle controls (linear velocity, angular velocity)
         """
         dxu = self.controller(x, g)
-        dxu_safe = self.barrier_fn(dxu, pose, [])
+        dxu_safe = self.barrier_fn(dxu, x, [])
 
 class RobotariumEnv:
     def __init__(
         self,
         num_agents: int,
+        max_steps=MAX_STEPS,
         **kwargs
     ) -> None:
         """
@@ -74,9 +81,12 @@ class RobotariumEnv:
             num_agents (int): maximum number of agents within the environment, used to set array dimensions
         """
         self.num_agents = num_agents
+        self.agents = [f"agent_{i}" for i in range(num_agents)]
         self.observation_spaces = dict()
         self.action_spaces = dict()
-        self.robotarium = Robotarium(**kwargs.get('robotarium', None))
+        self.max_steps = max_steps
+
+        self.robotarium = Robotarium(**kwargs.get('robotarium', {'number_of_robots': num_agents}))
         self.controller = Controller(**kwargs.get('controller', None)) if 'controller' in kwargs else None
 
     def reset(self, key: chex.PRNGKey) -> Tuple[Dict[str, chex.Array], State]:
@@ -99,7 +109,7 @@ class RobotariumEnv:
         )
 
         # set velocities to 0
-        self.robotarium.set_velocities(jnp.arange(self.num_agents), jnp.zeros(2, self.num_agents))
+        self.robotarium.set_velocities(jnp.arange(self.num_agents), jnp.zeros((2, self.num_agents)))
 
         state = State(
             p_pos=self.robotarium.get_poses().T,
@@ -158,10 +168,11 @@ class RobotariumEnv:
             )
         """
 
-        actions = jnp.array([actions[i] for i in self.agents]).reshape(
+        actions = jnp.array([actions[f'agent_{i}'] for i in range(self.num_agents)]).reshape(
             (self.num_agents, -1)
         ) 
         poses = state.p_pos.T
+        dxu = actions.T
 
         # if controller exists, convert actions to control inputs
         if self.controller:
@@ -170,9 +181,7 @@ class RobotariumEnv:
         updated_pose = self.robotarium.batch_step(poses, dxu)
         done = jnp.full((self.num_agents), state.step >= self.max_steps)
         state = state.replace(
-            p_pos=p_pos,
-            p_vel=p_vel,
-            c=c,
+            p_pos=updated_pose.T,
             done=done,
             step=state.step + 1,
         )
@@ -212,7 +221,7 @@ class RobotariumEnv:
             (Dict[str, float]) agent observations
         """
 
-        return {a: state.p_pos.T[i] for i, a in enumerate(self.agents)}
+        return {a: state.p_pos[i] for i, a in enumerate(self.agents)}
 
     def observation_space(self, agent: str):
         """Observation space for a given agent."""
