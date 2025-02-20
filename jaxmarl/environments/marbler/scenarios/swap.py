@@ -8,10 +8,17 @@ class Swap(RobotariumEnv):
 
     def __init__(self, num_agents, max_steps=50, **kwargs):
         super().__init__(num_agents, max_steps, **kwargs)
+        self.name = 'MARBLER_swap'
 
         self.pos_shaping = kwargs.get('pos_shaping', -0.01)
         self.violation_shaping = kwargs.get('violation_shaping', -10)
         self.goal_radius = kwargs.get('goal_radius', 0.1)
+
+        # Observation space
+        self.obs_dim = 5
+        self.observation_spaces = {
+            i: Box(-jnp.inf, jnp.inf, (self.obs_dim,)) for i in self.agents
+        }
 
     def reset(self, key: chex.PRNGKey) -> Tuple[Dict[str, chex.Array], State]:
         """
@@ -67,14 +74,14 @@ class Swap(RobotariumEnv):
             )
         """
 
-        actions = jnp.array([actions[f'agent_{i}'] for i in range(self.num_agents)]).reshape(
+        actions = jnp.array([self.action_decoder(i, actions[f'agent_{i}'], state) for i in range(self.num_agents)]).reshape(
             (self.num_agents, -1)
         ) 
         poses = state.p_pos.T[:, :self.num_agents]
 
         # if controller exists, convert actions to control inputs
         if self.controller:
-            dxu = self.controller(poses, actions.T)   # actions interpreted as goals for controller
+            dxu = self.controller.get_action(poses, actions.T)   # actions interpreted as goals for controller
         else:
             dxu = actions.T
 
@@ -88,7 +95,7 @@ class Swap(RobotariumEnv):
         violations = self.get_violations(state)
         collision = violations['collision'] > 0
         boundary = violations['boundary'] > 0
-        done = jnp.full((self.num_agents), state.step >= self.max_steps & boundary & collision)
+        done = jnp.full((self.num_agents), ((state.step >= self.max_steps) | boundary | collision))
         state = state.replace(
             done=done,
             step=state.step + 1,
@@ -98,7 +105,10 @@ class Swap(RobotariumEnv):
 
         obs = self.get_obs(state)
 
-        info = {}
+        info = {
+            'collision': jnp.full((self.num_agents,), violations['collision']),
+            'boundary': jnp.full((self.num_agents,), violations['boundary'])
+        }
 
         dones = {a: done[i] for i, a in enumerate(self.agents)}
         dones.update({"__all__": jnp.all(done)})
@@ -117,8 +127,8 @@ class Swap(RobotariumEnv):
         """
 
         # agent specific shaping reward
-        goals = state.p_pos[self.num_agents:, :]
-        agent_pos = state.p_pos[:self.num_agents, :]
+        goals = state.p_pos[self.num_agents:, :2]
+        agent_pos = state.p_pos[:self.num_agents, :2]
         d_goal = jnp.linalg.norm(agent_pos - goals, axis=1)
         pos_rew = d_goal * self.pos_shaping
 
@@ -145,8 +155,8 @@ class Swap(RobotariumEnv):
             (Dict[str, float]) agent observations
         """
 
-        goals = state.p_pos[self.num_agents:, :]
-        agent_pos = state.p_pos[:self.num_agents, :]
+        goals = state.p_pos[self.num_agents:, :2]
+        agent_pos = state.p_pos[:self.num_agents, :2]
         to_goal = goals - agent_pos
 
         return {a: jnp.concatenate([state.p_pos[i], to_goal[i]]) for i, a in enumerate(self.agents)}

@@ -9,6 +9,8 @@ from flax import struct
 from typing import Tuple, Optional, Dict
 
 from jaxmarl.environments.marbler.constants import *
+from jaxmarl.environments.spaces import Box, Discrete
+
 from rps_jax.robotarium import *
 from rps_jax.robotarium_abc import *
 from rps_jax.utilities.controllers import *
@@ -48,7 +50,7 @@ class Controller:
         if barrier_fn not in BARRIERS:
             raise ValueError(f'{controller} not in supported controllers, {CONTROLLERS}')
         elif barrier_fn == 'robust_barriers':
-            barrier_fn = create_robust_barriers(**kwargs.get('barrier_args', {}))
+            barrier_fn = create_robust_barriers(safety_radius=SAFETY_RADIUS)
 
         self.controller = controller
         self.barrier_fn = barrier_fn
@@ -67,11 +69,14 @@ class Controller:
         dxu = self.controller(x, g)
         dxu_safe = self.barrier_fn(dxu, x, [])
 
+        return dxu_safe
+
 class RobotariumEnv:
     def __init__(
         self,
         num_agents: int,
         max_steps=MAX_STEPS,
+        action_type=DISCRETE_ACT,
         **kwargs
     ) -> None:
         """
@@ -86,8 +91,26 @@ class RobotariumEnv:
         self.action_spaces = dict()
         self.max_steps = max_steps
 
-        self.robotarium = Robotarium(**kwargs.get('robotarium', {'number_of_robots': num_agents}))
+        # Initialize robotarium and controller backends
+        default_robotarium_args = {'number_of_robots': num_agents, 'show_figure': True, 'sim_in_real_time': True}
+        self.robotarium = Robotarium(**kwargs.get('robotarium', default_robotarium_args))
         self.controller = Controller(**kwargs.get('controller', None)) if 'controller' in kwargs else None
+        self.step_dist = kwargs.get('step_dist', 0.2)
+
+        # Action type
+        self.action_dim = 5
+        if action_type == DISCRETE_ACT:
+            self.action_spaces = {i: Discrete(self.action_dim) for i in self.agents}
+            self.action_decoder = self._decode_discrete_action
+        elif action_type == CONTINUOUS_ACT:
+            self.action_spaces = {i: Box(0.0, 1.0, (self.action_dim,)) for i in self.agents}
+            self.action_decoder = self._decode_continuous_action
+        
+        # Observation space
+        self.obs_dim = 3
+        self.observation_spaces = {
+            i: Box(-jnp.inf, jnp.inf, (self.obs_dim,)) for i in self.agents
+        }
 
     def reset(self, key: chex.PRNGKey) -> Tuple[Dict[str, chex.Array], State]:
         """
@@ -168,15 +191,16 @@ class RobotariumEnv:
             )
         """
 
-        actions = jnp.array([actions[f'agent_{i}'] for i in range(self.num_agents)]).reshape(
+        actions = jnp.array([self.action_decoder(i, actions[f'agent_{i}'], state) for i in range(self.num_agents)]).reshape(
             (self.num_agents, -1)
         ) 
         poses = state.p_pos.T
-        dxu = actions.T
 
         # if controller exists, convert actions to control inputs
         if self.controller:
-            dxu = self.controller(poses.T, actions.T)   # actions interpreted as goals for controller
+            dxu = self.controller.get_action(poses, actions.T)   # actions interpreted as goals for controller
+        else:
+            dxu = actions.T
 
         # update pose
         updated_pose = self.robotarium.batch_step(poses, dxu)
@@ -188,7 +212,7 @@ class RobotariumEnv:
         violations = self.get_violations(state)
         collision = violations['collision'] > 0
         boundary = violations['boundary'] > 0
-        done = jnp.full((self.num_agents), state.step >= self.max_steps & boundary & collision)
+        done = jnp.full((self.num_agents), state.step >= self.max_steps | boundary | collision)
         state = state.replace(
             done=done,
             step=state.step + 1,
@@ -219,6 +243,15 @@ class RobotariumEnv:
         return {agent: 0 for _, agent in enumerate(self.agents)}
 
     def get_violations(self, state: State) -> Dict[str, float]:
+        """
+        Checks environment for collision and boundary violations.
+
+        Args:
+            state: (State) environment state
+        
+        Returns
+            (Dict[str, float]) collision and boundary violations
+        """
         b = self.robotarium.boundaries
         p = state.p_pos[:self.num_agents, :].T
         N = self.num_agents
@@ -257,3 +290,87 @@ class RobotariumEnv:
     def action_space(self, agent: str):
         """Action space for a given agent."""
         return self.action_spaces[agent]
+
+    def _decode_discrete_action(self, a_idx: int, action: int, state: State):
+        """
+        Decode action index into null, up, down, left, right actions
+
+        Args:
+            a_idx (int): agent index
+            action: (int) action index
+            state: (State) environment state
+        
+        Returns:
+            (chex.Array) desired (x,y) position
+        """
+        goals = jnp.array([[0, 0], [0, 1], [0, -1], [1, 0], [-1, 0]])
+        
+        return state.p_pos[a_idx,:2] + (goals[action] * self.step_dist)
+
+    def _decode_continuous_action(self, a_idx: int, action: chex.Array, state: State):
+        """
+        Trivially returns actions, assumes directly setting v and omega
+
+        Args:
+            a_idx: (int) agent index
+            action: (chex.Array) action
+            state: (State) environment state
+        
+        Returns:
+            (chex.Array) action
+        """
+        return action
+
+    def render(self, batch, name='env', save_path=None):
+        import numpy as np
+        import matplotlib.pyplot as plt
+        from PIL import Image
+        import imageio 
+
+        colors = plt.get_cmap('viridis', self.num_agents)
+        x_positions = []
+        for i in range(self.num_agents):
+            x_positions.append(np.array(batch[:, i, 0]))
+        y_positions = []
+        for i in range(self.num_agents):
+            y_positions.append(np.array(batch[:, i, 1]))
+
+        # Setup plot
+        fig, ax = plt.subplots(figsize=(6.4, 4))
+        ax.set_xlim(-1.6, 1.6)
+        ax.set_ylim(-1, 1)
+        ax.set_title(f'{name}')
+
+        # Plot full trajectory with transparency (trails)
+        for i in range(self.num_agents):
+            ax.plot(x_positions[i], y_positions[i], color=colors(i), alpha=0.3)
+
+        # Initialize moving robot markers
+        robots = []
+        for i in range(self.num_agents):
+            robot, = ax.plot([], [], 'o', markersize=10,  color=colors(i), label=f"robot {i}")
+            robots.append(robot)
+
+        ax.legend()
+
+        # List to store frames
+        frames = []
+
+        # Generate and save each frame
+        for frame in range(len(x_positions[0])):
+            for i in range(self.num_agents):
+                x, y = x_positions[i][frame], y_positions[i][frame]
+                robots[i].set_data([x], [y])
+
+            # Save the current frame as an image
+            fig.canvas.draw()
+            frame_image = np.array(fig.canvas.renderer.buffer_rgba())  # Get image from canvas
+            frames.append(Image.fromarray(frame_image))  # Convert to PIL Image
+
+        # Save frames as a GIF
+        if save_path:
+            frames[0].save(save_path, save_all=True, append_images=frames[1:], duration=20, loop=0)
+
+            print(f"GIF saved at {save_path}")
+
+        return frames

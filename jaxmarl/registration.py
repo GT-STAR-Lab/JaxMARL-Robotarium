@@ -28,6 +28,7 @@ from .environments import (
     Overcooked,
     CoinGame,
     JaxNav,
+    Swap
 )
 
 
@@ -113,6 +114,10 @@ def make(env_id: str, **env_kwargs):
     # 9. JaxNav
     elif env_id == "jaxnav":
         env = JaxNav(**env_kwargs)
+    
+    # 10. Marbler
+    elif env_id == "swap":
+        env = Swap(**env_kwargs)
 
     return env
 
@@ -146,4 +151,5 @@ registered_envs = [
     "overcooked",
     "coin_game",
     "jaxnav",
+    "swap"
 ]

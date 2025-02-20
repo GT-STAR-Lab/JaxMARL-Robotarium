@@ -9,7 +9,7 @@ class TestRobotariumEnv(unittest.TestCase):
     def setUp(self):
         self.num_agents = 3
         self.batch_size = 10
-        self.env = RobotariumEnv(num_agents=self.num_agents)
+        self.env = RobotariumEnv(num_agents=self.num_agents, action_type="Continuous")
         self.key = jax.random.PRNGKey(0)
 
     def test_reset(self):

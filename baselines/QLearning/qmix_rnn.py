@@ -553,7 +553,7 @@ def make_train(config, env):
                     train_state.n_updates
                     % int(config["NUM_UPDATES"] * config["TEST_INTERVAL"])
                     == 0,
-                    lambda _: get_greedy_metrics(_rng, train_state),
+                    lambda _: get_greedy_metrics(_rng, train_state)[0],
                     lambda _: test_state,
                     operand=None,
                 )
@@ -600,7 +600,7 @@ def make_train(config, env):
                     key_s, env_state, actions
                 )
                 step_state = (params, env_state, obs, dones, hstate, rng)
-                return step_state, (rewards, dones, infos)
+                return step_state, (rewards, dones, infos, env_state)
 
             rng, _rng = jax.random.split(rng)
             init_obs, env_state = test_env.batch_reset(_rng)
@@ -620,7 +620,7 @@ def make_train(config, env):
                 hstate,
                 _rng,
             )
-            step_state, (rewards, dones, infos) = jax.lax.scan(
+            step_state, (rewards, dones, infos, test_state) = jax.lax.scan(
                 _greedy_env_step, step_state, None, config["TEST_NUM_STEPS"]
             )
             metrics = jax.tree.map(
@@ -633,20 +633,20 @@ def make_train(config, env):
                 ),
                 infos,
             )
-            return metrics
+            return metrics, test_state
 
         rng, _rng = jax.random.split(rng)
-        test_state = get_greedy_metrics(_rng, train_state)
+        test_metrics, test_state = get_greedy_metrics(_rng, train_state)
 
         # train
         rng, _rng = jax.random.split(rng)
-        runner_state = (train_state, buffer_state, test_state, _rng)
+        runner_state = (train_state, buffer_state, test_metrics, _rng)
 
         runner_state, metrics = jax.lax.scan(
             _update_step, runner_state, None, config["NUM_UPDATES"]
         )
 
-        return {"runner_state": runner_state, "metrics": metrics}
+        return {"runner_state": runner_state, "test_state": test_state, "metrics": metrics}
 
     return train
 
@@ -703,13 +703,25 @@ def single_run(config):
     train_vjit = jax.jit(jax.vmap(make_train(config, env)))
     outs = jax.block_until_ready(train_vjit(rngs))
 
+    # save gifs
+    save_dir = os.path.join(config["SAVE_PATH"], env_name)
+    os.makedirs(save_dir, exist_ok=True)
+    test_states = outs["test_state"]
+    if config.get("VISUALIZE", False):
+        for i in range(config.get("VIS_NUM_ENVS", 1)):
+            for j in range(config.get("VIS_NUM_SEEDS", 1)):
+                frames = env._env.render(test_states.env_state.p_pos[j, :, i, ...], name=f"{env_name}_seed_{j}_env_{i}")
+                gif_path = os.path.join(
+                    save_dir, f'{alg_name}_{env_name}_seed_{i}_env_{i}.gif'
+                )
+                frames[0].save(gif_path, save_all=True, append_images=frames[1:], duration=20, loop=0)
+                wandb.log({f"{env_name}_seed_{i}_env_{i}": wandb.Video(gif_path)})
+
     # save params
     if config.get("SAVE_PATH", None) is not None:
         from jaxmarl.wrappers.baselines import save_params
 
         model_state = outs["runner_state"][0]
-        save_dir = os.path.join(config["SAVE_PATH"], env_name)
-        os.makedirs(save_dir, exist_ok=True)
         OmegaConf.save(
             config,
             os.path.join(
