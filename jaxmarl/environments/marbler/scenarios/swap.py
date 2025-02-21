@@ -10,7 +10,7 @@ class Swap(RobotariumEnv):
         super().__init__(num_agents, max_steps, **kwargs)
         self.name = 'MARBLER_swap'
 
-        self.pos_shaping = kwargs.get('pos_shaping', -0.01)
+        self.pos_shaping = kwargs.get('pos_shaping', -0.1)
         self.violation_shaping = kwargs.get('violation_shaping', -10)
         self.goal_radius = kwargs.get('goal_radius', 0.1)
 
@@ -77,16 +77,10 @@ class Swap(RobotariumEnv):
         actions = jnp.array([self.action_decoder(i, actions[f'agent_{i}'], state) for i in range(self.num_agents)]).reshape(
             (self.num_agents, -1)
         ) 
-        poses = state.p_pos.T[:, :self.num_agents]
-
-        # if controller exists, convert actions to control inputs
-        if self.controller:
-            dxu = self.controller.get_action(poses, actions.T)   # actions interpreted as goals for controller
-        else:
-            dxu = actions.T
+        poses = state.p_pos[:self.num_agents, :]
 
         # update pose
-        updated_pose = self.robotarium.batch_step(poses, dxu)
+        updated_pose = self._robotarium_step(poses, actions)
         state = state.replace(
             p_pos=jnp.vstack([updated_pose.T, state.p_pos[self.num_agents:, :]]),
         )
@@ -96,6 +90,7 @@ class Swap(RobotariumEnv):
         collision = violations['collision'] > 0
         boundary = violations['boundary'] > 0
         done = jnp.full((self.num_agents), ((state.step >= self.max_steps) | boundary | collision))
+        # done = jnp.full((self.num_agents), state.step >= self.max_steps)
         state = state.replace(
             done=done,
             step=state.step + 1,
@@ -143,6 +138,7 @@ class Swap(RobotariumEnv):
         final_rew = jnp.where(jnp.sum(on_goal) < self.num_agents, 0, 1)
 
         return {agent: jnp.where(violation_rew == 0, pos_rew[i] + final_rew, violation_rew) for i, agent in enumerate(self.agents)}
+        # return {agent: pos_rew[i] + final_rew for i, agent in enumerate(self.agents)}
 
     def get_obs(self, state: State) -> Dict[str, chex.Array]:
         """

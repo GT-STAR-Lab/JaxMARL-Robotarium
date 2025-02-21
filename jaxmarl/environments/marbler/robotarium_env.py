@@ -26,8 +26,8 @@ class State:
 class Controller:
     def __init__(
         self,
-        controller,
-        barrier_fn,
+        controller = None,
+        barrier_fn = None,
         **kwargs
     ):
         """
@@ -37,6 +37,12 @@ class Controller:
             controller: (str) name of controller, supported controllers defined in constants.py
             barrier_fn: (str) name of barrier fn, supported barrier functions defined in constants.py 
         """
+        if controller is None:
+            # if controller is not set, return trivial pass through of actions
+            self.controller = lambda x, g: g
+            self.barrier_fn = lambda dxu, x, unused: dxu
+            return
+
         if controller not in CONTROLLERS:
             raise ValueError(f'{controller} not in supported controllers, {CONTROLLERS}')
         elif controller == 'si_position':
@@ -94,8 +100,9 @@ class RobotariumEnv:
         # Initialize robotarium and controller backends
         default_robotarium_args = {'number_of_robots': num_agents, 'show_figure': True, 'sim_in_real_time': True}
         self.robotarium = Robotarium(**kwargs.get('robotarium', default_robotarium_args))
-        self.controller = Controller(**kwargs.get('controller', None)) if 'controller' in kwargs else None
+        self.controller = Controller(**kwargs.get('controller', {}))
         self.step_dist = kwargs.get('step_dist', 0.2)
+        self.update_frequency = kwargs.get('update_frequency', 10)
 
         # Action type
         self.action_dim = 5
@@ -194,16 +201,10 @@ class RobotariumEnv:
         actions = jnp.array([self.action_decoder(i, actions[f'agent_{i}'], state) for i in range(self.num_agents)]).reshape(
             (self.num_agents, -1)
         ) 
-        poses = state.p_pos.T
-
-        # if controller exists, convert actions to control inputs
-        if self.controller:
-            dxu = self.controller.get_action(poses, actions.T)   # actions interpreted as goals for controller
-        else:
-            dxu = actions.T
+        poses = state.p_pos
 
         # update pose
-        updated_pose = self.robotarium.batch_step(poses, dxu)
+        updated_pose = self._robotarium_step(poses, actions)
         state = state.replace(
             p_pos=updated_pose.T,
         )
@@ -304,8 +305,13 @@ class RobotariumEnv:
             (chex.Array) desired (x,y) position
         """
         goals = jnp.array([[0, 0], [0, 1], [0, -1], [1, 0], [-1, 0]])
-        
-        return state.p_pos[a_idx,:2] + (goals[action] * self.step_dist)
+        candidate_goals = state.p_pos[a_idx,:2] + (goals[action] * self.step_dist)
+
+        # ensure goals are in bound
+        b = jnp.array(self.robotarium.boundaries)
+        in_goals = jnp.clip(candidate_goals, b[:2], b[:2] + b[2:])
+
+        return in_goals
 
     def _decode_continuous_action(self, a_idx: int, action: chex.Array, state: State):
         """
@@ -320,6 +326,28 @@ class RobotariumEnv:
             (chex.Array) action
         """
         return action
+    
+    def _robotarium_step(self, poses: jnp.ndarray, goals: jnp.ndarray):
+        """
+        Wrapper to step robotarium simulator update_frequency times
+
+        Args:
+            poses: (jnp.ndarray) 3xN array of robot poses
+            actions: (jnp.ndarray) 2xN array of robot actions
+            update_frequency: (int) number of times to step robotarium simulator
+        
+        Returns:
+            (jnp.ndarray) final poses after update_frequency steps
+        """
+        poses = poses.T
+        goals = goals.T
+        def wrapped_step(poses, unused):
+            dxu = self.controller.get_action(poses, goals) 
+            updated_pose = self.robotarium.batch_step(poses, dxu)
+            return updated_pose, None
+        final_pose, _ = jax.lax.scan(wrapped_step, poses, None, self.update_frequency)
+
+        return final_pose
 
     def render(self, batch, name='env', save_path=None):
         import numpy as np

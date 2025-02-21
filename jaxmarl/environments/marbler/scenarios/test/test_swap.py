@@ -15,7 +15,7 @@ class TestSwap(unittest.TestCase):
     def setUp(self):
         self.num_agents = 3
         self.batch_size = 10
-        self.env = Swap(num_agents=self.num_agents, action_type="Continuous", max_steps=1000)
+        self.env = Swap(num_agents=self.num_agents, action_type="Continuous", max_steps=250, update_frequency=1)
         self.key = jax.random.PRNGKey(0)
 
     def test_step_collision(self):
@@ -52,7 +52,7 @@ class TestSwap(unittest.TestCase):
         _, state = self.env.reset(self.key)
 
         # positions that will lead to boundary violation
-        boundary_p_pos = jnp.array([[-1, 0, 0], [1, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]])
+        boundary_p_pos = jnp.array([[-1., 0, 0], [1, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]])
         state = state.replace(
             p_pos = boundary_p_pos
         )
@@ -62,27 +62,42 @@ class TestSwap(unittest.TestCase):
         for i in range(self.num_agents):
             self.assertFalse(dones[f'agent_{i}'])
     
+    def test_reward(self):
+        _, state = self.env.reset(self.key)
+        p_pos = jnp.array([[1, 0, 0], [-1, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]])
+        state = state.replace(
+            p_pos = p_pos
+        )
+        rewards = self.env.rewards(state)
+        self.assertEqual(rewards['agent_0'], 1 * self.env.pos_shaping)
+        self.assertEqual(rewards['agent_1'], 1 * self.env.pos_shaping)
+        self.assertEqual(rewards['agent_2'], 0)
+    
     def test_batched_rollout(self):
+        self.env = Swap(
+            num_agents=self.num_agents,
+            action_type="Continuous",
+            max_steps=25,
+            update_frequency=10,
+            controller={
+                "controller": "clf_uni_position",
+                "barrier_fn": "robust_barriers",
+            }
+        )
         keys = jax.random.split(self.key, self.batch_size)
         _, state = jax.vmap(self.env.reset, in_axes=0)(keys)
         initial_state = state
-        barrier_fn = create_robust_barriers(safety_radius=0.2)
-        controller = create_clf_unicycle_position_controller()
 
         def get_action(state):
-            agent_pos = state.p_pos[:self.num_agents, :].T
-            goal_pos = state.p_pos[self.num_agents:, :2].T
-            dxu = controller(agent_pos, goal_pos)
-            dxu_safe = barrier_fn(dxu, agent_pos, [])
-            dxu_safe = dxu_safe.T
-            return {str(f'agent_{i}'): dxu_safe[i] for i in range(self.num_agents)}
+            goal_pos = state.p_pos[self.num_agents:, :2]
+            return {str(f'agent_{i}'): goal_pos[i] for i in range(self.num_agents)}
         
         def wrapped_step(poses, unused):
             actions = jax.vmap(get_action, in_axes=(0))(poses)
             new_obs, new_state, rewards, dones, infos = jax.vmap(self.env.step, in_axes=(0, 0, 0))(keys, poses, actions)
             return new_state, new_state
 
-        final_state, batch = jax.lax.scan(wrapped_step, state, None, 250)
+        final_state, batch = jax.lax.scan(wrapped_step, state, None, 25)
         
         # check that the robot moved
         for i in range(self.num_agents):
