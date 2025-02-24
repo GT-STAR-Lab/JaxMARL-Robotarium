@@ -337,7 +337,7 @@ def make_train(config, env):
         # TRAINING LOOP
         def _update_step(runner_state, unused):
 
-            train_state, buffer_state, test_state, rng = runner_state
+            train_state, buffer_state, test_metrics, test_state, rng = runner_state
 
             # SAMPLE PHASE
             def _step_env(carry, _):
@@ -549,15 +549,15 @@ def make_train(config, env):
             # update the test metrics
             if config.get("TEST_DURING_TRAINING", True):
                 rng, _rng = jax.random.split(rng)
-                test_state = jax.lax.cond(
+                test_metrics, test_state = jax.lax.cond(
                     train_state.n_updates
                     % int(config["NUM_UPDATES"] * config["TEST_INTERVAL"])
                     == 0,
-                    lambda _: get_greedy_metrics(_rng, train_state)[0],
-                    lambda _: test_state,
+                    lambda _: get_greedy_metrics(_rng, train_state),
+                    lambda _: (test_metrics, test_state),
                     operand=None,
                 )
-                metrics.update({"test_" + k: v for k, v in test_state.items()})
+                metrics.update({"test_" + k: v for k, v in test_metrics.items()})
 
             # report on wandb if required
             if config["WANDB_MODE"] != "disabled":
@@ -571,7 +571,7 @@ def make_train(config, env):
 
                 jax.debug.callback(callback, metrics, original_seed)
 
-            runner_state = (train_state, buffer_state, test_state, rng)
+            runner_state = (train_state, buffer_state, test_metrics, test_state, rng)
 
             return runner_state, None
 
@@ -640,13 +640,13 @@ def make_train(config, env):
 
         # train
         rng, _rng = jax.random.split(rng)
-        runner_state = (train_state, buffer_state, test_metrics, _rng)
+        runner_state = (train_state, buffer_state, test_metrics, test_state, _rng)
 
         runner_state, metrics = jax.lax.scan(
             _update_step, runner_state, None, config["NUM_UPDATES"]
         )
 
-        return {"runner_state": runner_state, "test_state": test_state, "metrics": metrics}
+        return {"runner_state": runner_state, "test_state": runner_state[3], "metrics": metrics}
 
     return train
 
@@ -710,7 +710,7 @@ def single_run(config):
     if config.get("VISUALIZE", False):
         for i in range(config.get("VIS_NUM_ENVS", 1)):
             for j in range(config.get("VIS_NUM_SEEDS", 1)):
-                frames = env._env.render(test_states.env_state.p_pos[j, :, i, ...], name=f"{env_name}_seed_{j}_env_{i}")
+                frames = env._env.render(test_states.env_state.p_pos[j, :-1, i, ...], name=f"{env_name}_seed_{j}_env_{i}")
                 gif_path = os.path.join(
                     save_dir, f'{alg_name}_{env_name}_seed_{i}_env_{i}.gif'
                 )

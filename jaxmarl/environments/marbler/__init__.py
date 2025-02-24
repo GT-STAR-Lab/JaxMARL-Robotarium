@@ -1,1 +1,1 @@
-from .scenarios.swap import Swap
+from .scenarios.navigation import Navigation

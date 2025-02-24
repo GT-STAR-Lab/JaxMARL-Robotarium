@@ -62,6 +62,17 @@ class TestRobotariumEnv(unittest.TestCase):
         for i in range(self.num_agents):
             self.assertEqual(self.env.action_space(str(i)), "act_space")
     
+    def test_action_decoder(self):
+        _, state = self.env.reset(self.key)
+
+        state = state.replace(
+            p_pos = jnp.array([[0.0, 0.9, 0.0], [0.0, -0.9, 0.0], [1.5, 0.0, 0.0]])
+        )
+        decoded_actions = [self.env._decode_discrete_action(i, i+1, state) for i in range(self.num_agents)]
+        for i in range(self.num_agents):
+            self.assertTrue(decoded_actions[i][0] >= -1.6 and decoded_actions[i][0] <= 1.6)
+            self.assertTrue(decoded_actions[i][1] >= -1 and decoded_actions[i][1] <= 1)
+    
     def test_batched_rollout(self):
         keys = jax.random.split(self.key, self.batch_size)
         _, state = jax.vmap(self.env.reset, in_axes=0)(keys)

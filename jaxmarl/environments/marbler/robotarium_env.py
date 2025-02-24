@@ -39,11 +39,8 @@ class Controller:
         """
         if controller is None:
             # if controller is not set, return trivial pass through of actions
-            self.controller = lambda x, g: g
-            self.barrier_fn = lambda dxu, x, unused: dxu
-            return
-
-        if controller not in CONTROLLERS:
+            controller = lambda x, g: g
+        elif controller not in CONTROLLERS:
             raise ValueError(f'{controller} not in supported controllers, {CONTROLLERS}')
         elif controller == 'si_position':
             controller = create_si_position_controller(**kwargs.get('controller_args', {}))
@@ -52,8 +49,9 @@ class Controller:
         elif controller == 'clf_uni_pose':
             controller = create_clf_unicycle_pose_controller(**kwargs.get('controller_args', {}))
 
-        
-        if barrier_fn not in BARRIERS:
+        if barrier_fn is None:
+            barrier_fn = lambda dxu, x, unused: dxu
+        elif barrier_fn not in BARRIERS:
             raise ValueError(f'{controller} not in supported controllers, {CONTROLLERS}')
         elif barrier_fn == 'robust_barriers':
             barrier_fn = create_robust_barriers(safety_radius=SAFETY_RADIUS)
@@ -309,7 +307,7 @@ class RobotariumEnv:
 
         # ensure goals are in bound
         b = jnp.array(self.robotarium.boundaries)
-        in_goals = jnp.clip(candidate_goals, b[:2], b[:2] + b[2:])
+        in_goals = jnp.clip(candidate_goals, b[:2] + 0.1, b[:2] + b[2:] - 0.1)
 
         return in_goals
 
@@ -341,8 +339,8 @@ class RobotariumEnv:
         """
         poses = poses.T
         goals = goals.T
+        dxu = self.controller.get_action(poses, goals) 
         def wrapped_step(poses, unused):
-            dxu = self.controller.get_action(poses, goals) 
             updated_pose = self.robotarium.batch_step(poses, dxu)
             return updated_pose, None
         final_pose, _ = jax.lax.scan(wrapped_step, poses, None, self.update_frequency)
