@@ -1,26 +1,23 @@
 """
-Base environment for robotarium simulator
+Base robotarium_env implementation compatible with non-Jax Robotarium Python Simulator.
 """
 
-import jax
-import jax.numpy as jnp
-import chex
-from flax import struct
+from dataclasses import dataclass
+import numpy as jnp
 from typing import Tuple, Optional, Dict
 
-from jaxmarl.environments.marbler.constants import *
-from jaxmarl.environments.spaces import Box, Discrete
+from constants import *
 
-from rps_jax.robotarium import *
-from rps_jax.robotarium_abc import *
-from rps_jax.utilities.controllers import *
-from rps_jax.utilities.barrier_certificates2 import *
-from rps_jax.utilities.misc import *
+from rps.robotarium import *
+from rps.robotarium_abc import *
+from rps.utilities.controllers import *
+from rps.utilities.barrier_certificates2 import *
+from rps.utilities.misc import *
 
-@struct.dataclass
+@dataclass
 class State:
-    p_pos: chex.Array
-    done: chex.Array
+    p_pos: jnp.ndarray
+    done: jnp.ndarray
     step: int
 
 class Controller:
@@ -95,23 +92,26 @@ class RobotariumEnv:
         self.action_spaces = dict()
         self.max_steps = max_steps
 
-        # Initialize robotarium and controller backends 
-        default_robotarium_args = {'number_of_robots': num_agents, 'show_figure': False, 'sim_in_real_time': False}
-        self.robotarium = Robotarium(**kwargs.get('robotarium', default_robotarium_args))
-        self.controller = Controller(**kwargs.get('controller', {}))
+        # Initialize robotarium and controller backends
+        robotarium_args = {
+            'number_of_robots': num_agents,
+            'show_figure': True,
+            'sim_in_real_time': True,
+            'initial_conditions': kwargs.get('initial_conditions')
+        }
+        self.robotarium = Robotarium(**robotarium_args)
+        self.controller = Controller(kwargs.get('controller', None), kwargs.get('barrier_fn', None))
         self.step_dist = kwargs.get('step_dist', 0.2)
         self.update_frequency = kwargs.get('update_frequency', 10)
 
         # Action type
         self.action_dim = 5
         if action_type == DISCRETE_ACT:
-            self.action_spaces = {i: Discrete(self.action_dim) for i in self.agents}
             self.action_decoder = self._decode_discrete_action
         elif action_type == CONTINUOUS_ACT:
-            self.action_spaces = {i: Box(0.0, 1.0, (self.action_dim,)) for i in self.agents}
             self.action_decoder = self._decode_continuous_action
 
-    def reset(self, key: chex.PRNGKey) -> Tuple[Dict[str, chex.Array], State]:
+    def reset(self) -> Tuple[Dict[str, np.ndarray], State]:
         """
         Performs resetting of the environment.
         
@@ -124,42 +124,13 @@ class RobotariumEnv:
 
         raise NotImplementedError
 
-    def step(
-        self,
-        key: chex.PRNGKey,
-        state: State,
-        actions: Dict[str, chex.Array],
-        reset_state: Optional[State] = None,
-    ) -> Tuple[Dict[str, chex.Array], State, Dict[str, float], Dict[str, bool], Dict]:
-        """Performs step transitions in the environment. Resets the environment if done.
-        To control the reset state, pass `reset_state`. Otherwise, the environment will reset randomly."""
-
-        key, key_reset = jax.random.split(key)
-        obs_st, states_st, rewards, dones, infos = self.step_env(key, state, actions)
-
-        if reset_state is None:
-            obs_re, states_re = self.reset(key_reset)
-        else:
-            states_re = reset_state
-            obs_re = self.get_obs(states_re)
-
-        # Auto-reset environment based on termination
-        states = jax.tree.map(
-            lambda x, y: jax.lax.select(dones["__all__"], x, y), states_re, states_st
-        )
-        obs = jax.tree.map(
-            lambda x, y: jax.lax.select(dones["__all__"], x, y), obs_re, obs_st
-        )
-        return obs, states, rewards, dones, infos
-
     def step_env(
-        self, key: chex.PRNGKey, state: State, actions: Dict[str, chex.Array]
-    ) -> Tuple[Dict[str, chex.Array], State, Dict[str, float], Dict[str, bool], Dict]:
+        self, state: State, actions: Dict[str, np.ndarray]
+    ) -> Tuple[Dict[str, np.ndarray], State, Dict[str, float], Dict[str, bool], Dict]:
         """
         Environment-specific step transition.
         
         Args:
-            key: (chex.PRNGKey)
             state: (State) environment state
             actions: (Dict) agent actions
         
@@ -177,7 +148,7 @@ class RobotariumEnv:
     
     def rewards(self, state: State) -> Dict[str, float]:
         """
-        Assigns rewards.
+        Assigns rewards, trivially returns 0 here.
         
         Args:
             state: (State) environment state
@@ -187,8 +158,8 @@ class RobotariumEnv:
         """
 
         raise NotImplementedError
-
-    def get_obs(self, state: State) -> Dict[str, chex.Array]:
+    
+    def get_obs(self, state: State) -> Dict[str, np.ndarray]:
         """
         Applies observation function to state.
 
@@ -201,14 +172,6 @@ class RobotariumEnv:
 
         raise NotImplementedError
 
-    def observation_space(self, agent: str):
-        """Observation space for a given agent."""
-        return self.observation_spaces[agent]
-
-    def action_space(self, agent: str):
-        """Action space for a given agent."""
-        return self.action_spaces[agent]
-    
     def _get_violations(self, state: State) -> Dict[str, float]:
         """
         Checks environment for collision and boundary violations.
@@ -258,7 +221,7 @@ class RobotariumEnv:
 
         return in_goals
 
-    def _decode_continuous_action(self, a_idx: int, action: chex.Array, state: State):
+    def _decode_continuous_action(self, a_idx: int, action: np.ndarray, state: State):
         """
         Trivially returns actions, assumes directly setting v and omega
 
@@ -287,16 +250,15 @@ class RobotariumEnv:
         poses = poses.T
         goals = goals.T
         dxu = self.controller.get_action(poses, goals) 
-        def wrapped_step(poses, unused):
-            updated_pose = self.robotarium.batch_step(poses, dxu)
-            return updated_pose, None
-        final_pose, _ = jax.lax.scan(wrapped_step, poses, None, self.update_frequency)
+        for i in range(self.update_frequency):
+            dxu = self.controller.get_action(poses, goals)
+            self.robotarium.set_velocities(jnp.arange(self.num_agents), dxu)
+            self.robotarium.step()
+            poses = self.robotarium.get_poses()
+        final_pose = poses.T
 
-        return final_pose.T
+        return final_pose
 
-    def render(self, batch, name='env', save_path=None):
-        raise NotImplementedError
-    
     #-----------------------------------------
     # Deployment Specific Functions
     #-----------------------------------------
@@ -306,6 +268,9 @@ class RobotariumEnv:
 
         Args:
             seed: (int) seed for random functions
+        
+        Returns:
+            (State) initial state
         """
 
         raise NotImplementedError
