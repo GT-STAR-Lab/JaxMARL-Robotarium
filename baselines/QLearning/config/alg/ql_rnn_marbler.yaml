@@ -23,11 +23,11 @@
 # ENV
 "ENV_NAME": "navigation"
 "ENV_KWARGS": {
-  "num_agents": 2,
+  "num_agents": 4,
   "max_steps": 75,
   "action_type": "Discrete",
   "robotarium": {
-    "number_of_robots": 2,
+    "number_of_robots": 4,
     "show_figure": False,
     "sim_in_real_time": False,
   },
@@ -35,7 +35,7 @@
     "controller": "clf_uni_position",
     "barrier_fn": "robust_barriers",
   },
-  "update_frequency": 30
+  "update_frequency": 15
 }
 
 # evaluate
