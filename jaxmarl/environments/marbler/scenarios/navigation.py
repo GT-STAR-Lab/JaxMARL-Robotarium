@@ -266,7 +266,7 @@ class Navigation(RobotariumEnv):
 
         return state
 
-    def render(self):
+    def visualize_robotarium(self):
         """
         Visualization for robotarium
         """

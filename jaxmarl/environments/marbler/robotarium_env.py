@@ -310,7 +310,7 @@ class RobotariumEnv:
 
         raise NotImplementedError
     
-    def render(self):
+    def visualize_robotarium(self):
         """
         Visualization for robotarium
         """
