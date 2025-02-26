@@ -42,7 +42,7 @@ class TestRobotariumEnv(unittest.TestCase):
         state = state.replace(
             p_pos = jnp.ones_like(state.p_pos)
         )
-        violations = self.env.get_violations(state)
+        violations = self.env._get_violations(state)
         self.assertEqual(violations['collision'], 3)
 
     def test_get_obs(self):

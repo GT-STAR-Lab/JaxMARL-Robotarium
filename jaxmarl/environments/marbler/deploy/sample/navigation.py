@@ -5,7 +5,7 @@ Simple scenario where robots must swap positions.
 # wrap import statement in try-except block to allow for correct import during deployment
 try:
     from jaxmarl.environments.marbler.robotarium_env import *
-except Exception as e:
+except:
     from robotarium_env import *
 
 class Navigation(RobotariumEnv):
@@ -248,7 +248,7 @@ class Navigation(RobotariumEnv):
             seed: (int) seed for random functions
         
         Returns:
-            (State) initial state
+            (jnp.ndarray) initial poses (3xN) for robots
         """
 
         poses = generate_initial_conditions(
