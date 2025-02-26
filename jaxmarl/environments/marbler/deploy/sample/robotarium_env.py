@@ -124,6 +124,9 @@ class RobotariumEnv:
             self.action_decoder = self._decode_discrete_action
         elif action_type == CONTINUOUS_ACT:
             self.action_decoder = self._decode_continuous_action
+        
+        # For saving gifs
+        self.frames = []
 
     def reset(self) -> Tuple[Dict[str, np.ndarray], State]:
         """
@@ -289,7 +292,7 @@ class RobotariumEnv:
 
         raise NotImplementedError
     
-    def visualize_robotarium(self):
+    def visualize_robotarium(self, state: State):
         """
         Visualization for robotarium
         """

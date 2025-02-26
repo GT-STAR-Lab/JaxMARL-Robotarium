@@ -7,6 +7,7 @@ import os
 import yaml
 import json
 import importlib
+import imageio
 
 class objectview(object):
     def __init__(self, d):
@@ -41,3 +42,9 @@ if __name__ == "__main__":
         actions = {f'agent_{i}': best_action[i] for i in range(num_agents)}
 
         obs, state, reward, dones, info = env.step_env(None, state, actions)
+
+        env.visualize_robotarium(state)
+
+    
+    if config.save_gif:
+        imageio.mimsave(f'{config.scenario.lower()}.gif', env.frames, duration=50, loop=0)

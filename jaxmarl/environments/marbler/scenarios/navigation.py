@@ -248,7 +248,7 @@ class Navigation(RobotariumEnv):
             seed: (int) seed for random functions
         
         Returns:
-            (State) initial state
+            (jnp.ndarray) initial poses (3xN) for robots
         """
 
         poses = generate_initial_conditions(
@@ -266,9 +266,23 @@ class Navigation(RobotariumEnv):
 
         return state
 
-    def visualize_robotarium(self):
+    def visualize_robotarium(self, state: State):
         """
         Visualization for robotarium
         """
 
-        raise NotImplementedError
+        fig = self.robotarium.figure
+        
+        # add markers for goals
+        goals = state.p_pos[self.num_agents:, :2]
+        for i in range(self.num_agents):
+            self.robotarium.axes.plot(
+                jnp.array(goals[i, 0]),
+                np.array(goals[i, 1]), 'o',
+                markersize=5,
+                color='black'
+            )
+
+        fig.canvas.draw()
+        frame = jnp.array(fig.canvas.renderer.buffer_rgba())
+        self.frames.append(frame)

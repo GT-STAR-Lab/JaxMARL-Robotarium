@@ -1,10 +1,11 @@
 # ENV
 scenario: "Navigation"
-"num_agents": 4
+"num_agents": 3
 "max_steps": 100
 "action_type": "Discrete"
-"number_of_robots": 4
+"number_of_robots": 3
 "controller": "clf_uni_position"
 "barrier_fn": "robust_barriers"
 "update_frequency": 10
 "backend": "python"
+"save_gif": True
