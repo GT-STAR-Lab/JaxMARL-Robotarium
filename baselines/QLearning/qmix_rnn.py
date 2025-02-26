@@ -712,7 +712,7 @@ def single_run(config):
             for j in range(config.get("VIS_NUM_SEEDS", 1)):
                 frames = env._env.render(test_states.env_state.p_pos[j, :-1, i, ...], name=f"{env_name}_seed_{j}_env_{i}")
                 gif_path = os.path.join(
-                    save_dir, f'{alg_name}_{env_name}_seed_{i}_env_{i}.gif'
+                    save_dir, f'{alg_name}_{env_name}_seed_{j}_env_{i}.gif'
                 )
                 frames[0].save(gif_path, save_all=True, append_images=frames[1:], duration=20, loop=0)
                 wandb.log({f"{env_name}_seed_{i}_env_{i}": wandb.Video(gif_path)})

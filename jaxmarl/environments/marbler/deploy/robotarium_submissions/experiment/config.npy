@@ -1,0 +1,24 @@
+"seed": 1
+
+# ENV
+"scenario": "Navigation"
+"num_agents": 3
+"max_steps": 100
+"action_type": "Discrete"
+"number_of_robots": 3
+"controller": "clf_uni_position"
+"barrier_fn": "robust_barriers"
+"update_frequency": 30
+"backend": "python"
+"save_gif": False
+"preprocess_obs": True
+
+# MODEL CONFIG
+"input_dim": 5
+"hidden_dim": 256
+"output_dim": 5
+
+# DEPLOYMENT CONFIG
+"model_weights": "agent.tiff"
+"model_file": "actor.py"
+"model_class": RNNActor

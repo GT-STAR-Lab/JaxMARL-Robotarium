@@ -5,7 +5,7 @@ Simple scenario where robots must swap positions.
 # wrap import statement in try-except block to allow for correct import during deployment
 try:
     from jaxmarl.environments.marbler.robotarium_env import *
-except:
+except Exception as e:
     from robotarium_env import *
 
 class Navigation(RobotariumEnv):
@@ -278,7 +278,7 @@ class Navigation(RobotariumEnv):
         for i in range(self.num_agents):
             self.robotarium.axes.plot(
                 jnp.array(goals[i, 0]),
-                jnp.array(goals[i, 1]), 'o',
+                np.array(goals[i, 1]), 'o',
                 markersize=5,
                 color='black'
             )
