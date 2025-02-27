@@ -11,7 +11,7 @@ from constants import *
 from rps.robotarium import *
 from rps.robotarium_abc import *
 from rps.utilities.controllers import *
-from rps.utilities.barrier_certificates2 import *
+from rps.utilities.barrier_certificates import *
 from rps.utilities.misc import *
 
 @dataclass
@@ -65,7 +65,7 @@ class Controller:
         elif barrier_fn not in BARRIERS:
             raise ValueError(f'{controller} not in supported controllers, {CONTROLLERS}')
         elif barrier_fn == 'robust_barriers':
-            barrier_fn = create_robust_barriers(safety_radius=SAFETY_RADIUS)
+            barrier_fn = create_unicycle_differential_drive_barrier_certificate_with_boundary(safety_radius=SAFETY_RADIUS)
 
         self.controller = controller
         self.barrier_fn = barrier_fn
