@@ -45,7 +45,7 @@ if __name__ == "__main__":
    
     state = env.initial_state
     obs = env.get_obs(state)
-    hs = jnp.zeros((num_agents, config.hidden_dim))
+    hs = torch.from_numpy(jnp.zeros((num_agents, config.hidden_dim))).to(torch.float32)
     one_hot_id = jnp.eye(num_agents)
     for i in range(max_steps):
         # get agent action
@@ -53,8 +53,7 @@ if __name__ == "__main__":
             obs = jnp.hstack([jnp.vstack([obs_i for obs_i in obs.values()]), one_hot_id])
         else:
             obs = jnp.vstack([obs_i for obs_i in obs.values()])
-        obs = torch.tensor(obs).to(torch.float32)
-        hs = torch.tensor(hs).to(torch.float32)
+        obs = torch.from_numpy(obs).to(torch.float32)
         qvals, hs = actor(obs, hs)
 
         actions = {f'agent_{i}': jnp.argmax(qvals[i].detach().numpy()) for i in range(num_agents)}
