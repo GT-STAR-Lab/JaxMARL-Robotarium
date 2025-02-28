@@ -1,7 +1,7 @@
 # valid for iql, vdn, qmix
-"TOTAL_TIMESTEPS": 2e6
+"TOTAL_TIMESTEPS": 3e6
 "NUM_ENVS": 8
-"NUM_STEPS": 76
+"NUM_STEPS": 101
 "BUFFER_SIZE": 5000
 "BUFFER_BATCH_SIZE": 32
 "HIDDEN_SIZE": 256
@@ -23,11 +23,11 @@
 # ENV
 "ENV_NAME": "navigation"
 "ENV_KWARGS": {
-  "num_agents": 4,
-  "max_steps": 75,
+  "num_agents": 3,
+  "max_steps": 100,
   "action_type": "Discrete",
   "robotarium": {
-    "number_of_robots": 4,
+    "number_of_robots": 3,
     "show_figure": False,
     "sim_in_real_time": False,
   },
@@ -35,13 +35,13 @@
     "controller": "clf_uni_position",
     "barrier_fn": "robust_barriers",
   },
-  "update_frequency": 15
+  "update_frequency": 30
 }
 
 # evaluate
 "TEST_DURING_TRAINING": True
 "TEST_INTERVAL": 0.05 # as a fraction of updates, i.e. log every 5% of training process
-"TEST_NUM_STEPS": 76
+"TEST_NUM_STEPS": 101
 "TEST_NUM_ENVS": 64 # number of episodes to average over, can affect performance
 
 "LOG_AGENTS_SEPARATELY": True # iql will log indipendent agents separately

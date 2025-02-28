@@ -2,13 +2,24 @@
 Simple scenario where robots must swap positions.
 """
 
-from jaxmarl.environments.marbler.robotarium_env import *
+# wrap import statement in try-except block to allow for correct import during deployment
+try:
+    from jaxmarl.environments.marbler.robotarium_env import *
+except Exception as e:
+    from robotarium_env import *
 
 class Navigation(RobotariumEnv):
-
     def __init__(self, num_agents, max_steps=50, **kwargs):
-        super().__init__(num_agents, max_steps, **kwargs)
         self.name = 'MARBLER_navigation'
+        self.backend = kwargs.get('backend', 'jax')
+
+        if self.backend == 'jax':
+            super().__init__(num_agents, max_steps, **kwargs)
+        else:
+            self.num_agents = num_agents
+            self.initial_state = self.initialize_robotarium_state(kwargs.get("seed", 0))
+            kwargs['initial_conditions'] = self.initial_state.p_pos[:self.num_agents, :].T
+            super().__init__(num_agents, max_steps, **kwargs)
 
         self.pos_shaping = kwargs.get('pos_shaping', -1)
         self.violation_shaping = kwargs.get('violation_shaping', -10)
@@ -16,11 +27,12 @@ class Navigation(RobotariumEnv):
 
         # Observation space
         self.obs_dim = 5
-        self.observation_spaces = {
-            i: Box(-jnp.inf, jnp.inf, (self.obs_dim,)) for i in self.agents
-        }
+        if self.backend == 'jax':
+            self.observation_spaces = {
+                i: Box(-jnp.inf, jnp.inf, (self.obs_dim,)) for i in self.agents
+            }
 
-    def reset(self, key: chex.PRNGKey) -> Tuple[Dict[str, chex.Array], State]:
+    def reset(self, key) -> Tuple[Dict, State]:
         """
         Performs resetting of the environment.
         
@@ -28,16 +40,16 @@ class Navigation(RobotariumEnv):
             key: (chex.PRNGKey)
         
         Returns:
-            (Tuple[Dict[str, check.Array], State]) initial observation and environment state
+            (Tuple[Dict[str, chex.Array], State]) initial observation and environment state
         """
 
         # randomly generate initial poses for robots
         poses = generate_initial_conditions(
-            key,
             2*self.num_agents,
             width=ROBOTARIUM_WIDTH,
             height=ROBOTARIUM_HEIGHT,
-            spacing=0.5
+            spacing=0.5,
+            key=key
         )
         self.robotarium.poses = poses[:, :self.num_agents]
 
@@ -53,8 +65,8 @@ class Navigation(RobotariumEnv):
         return self.get_obs(state), state
 
     def step_env(
-        self, key: chex.PRNGKey, state: State, actions: Dict[str, chex.Array]
-    ) -> Tuple[Dict[str, chex.Array], State, Dict[str, float], Dict[str, bool], Dict]:
+        self, key, state: State, actions: Dict
+    ) -> Tuple[Dict, State, Dict[str, float], Dict[str, bool], Dict]:
         """
         Environment-specific step transition.
         
@@ -81,11 +93,11 @@ class Navigation(RobotariumEnv):
         # update pose
         updated_pose = self._robotarium_step(poses, actions)
         state = state.replace(
-            p_pos=jnp.vstack([updated_pose.T, state.p_pos[self.num_agents:, :]]),
+            p_pos=jnp.vstack([updated_pose, state.p_pos[self.num_agents:, :]]),
         )
 
         # check for violations
-        violations = self.get_violations(state)
+        violations = self._get_violations(state)
         collision = violations['collision'] > 0
         boundary = violations['boundary'] > 0
         # done = jnp.full((self.num_agents), ((state.step >= self.max_steps-1) | boundary | collision))
@@ -137,7 +149,7 @@ class Navigation(RobotariumEnv):
         pos_rew = d_goal * self.pos_shaping
 
         # global penalty for collisions and boundary violation
-        violations = self.get_violations(state)
+        violations = self._get_violations(state)
         collisions = violations['collision']
         boundaries = violations['boundary']
         violation_rew = self.violation_shaping * (collisions + boundaries)
@@ -149,7 +161,7 @@ class Navigation(RobotariumEnv):
         # return {agent: jnp.where(violation_rew == 0, pos_rew[i] + final_rew, violation_rew) for i, agent in enumerate(self.agents)}
         return {agent: pos_rew[i] for i, agent in enumerate(self.agents)}
 
-    def get_obs(self, state: State) -> Dict[str, chex.Array]:
+    def get_obs(self, state: State) -> Dict:
         """
         Get observation (pos, vector to goal)
 
@@ -224,3 +236,53 @@ class Navigation(RobotariumEnv):
             print(f"GIF saved at {save_path}")
 
         return frames
+
+    #-----------------------------------------
+    # Deployment Specific Functions
+    #-----------------------------------------
+    def initialize_robotarium_state(self, seed: int = 0):
+        """
+        Sets initial conditions for robotarium
+
+        Args:
+            seed: (int) seed for random functions
+        
+        Returns:
+            (jnp.ndarray) initial poses (3xN) for robots
+        """
+
+        poses = generate_initial_conditions(
+            2*self.num_agents,
+            width=ROBOTARIUM_WIDTH,
+            height=ROBOTARIUM_HEIGHT,
+            spacing=0.5,
+        )
+
+        state = State(
+            p_pos=poses.T,
+            done=jnp.full((self.num_agents), False),
+            step=0,
+        )
+
+        return state
+
+    def visualize_robotarium(self, state: State):
+        """
+        Visualization for robotarium
+        """
+
+        fig = self.robotarium.figure
+        
+        # add markers for goals
+        goals = state.p_pos[self.num_agents:, :2]
+        for i in range(self.num_agents):
+            self.robotarium.axes.plot(
+                jnp.array(goals[i, 0]),
+                np.array(goals[i, 1]), 'o',
+                markersize=5,
+                color='black'
+            )
+
+        fig.canvas.draw()
+        frame = jnp.array(fig.canvas.renderer.buffer_rgba())
+        self.frames.append(frame)

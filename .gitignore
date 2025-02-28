@@ -16,3 +16,4 @@ wandb/
 outputs/
 models/
 *artifacts/
+*robotarium_submissions/
