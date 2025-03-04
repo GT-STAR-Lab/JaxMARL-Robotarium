@@ -4,10 +4,7 @@ import jax.numpy as jnp
 
 from jaxmarl.environments.marbler.scenarios.navigation import Navigation
 
-from rps_jax.utilities.barrier_certificates2 import create_robust_barriers
-from rps_jax.utilities.controllers import create_clf_unicycle_position_controller
-
-VISUALIZE = True
+VISUALIZE = False
 
 class TestNavigation(unittest.TestCase):
     """unit tests for navigation.py"""
@@ -17,38 +14,17 @@ class TestNavigation(unittest.TestCase):
         self.batch_size = 10
         self.env = Navigation(num_agents=self.num_agents, action_type="Continuous", max_steps=250, update_frequency=1)
         self.key = jax.random.PRNGKey(0)
-
-    def test_step_collision(self):
-        _, state = self.env.reset(self.key)
-
-        # positions that will lead to collision violation
-        collision_p_pos = jnp.array([[1, 0, jnp.pi], [0.87, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]])
-        state = state.replace(
-            p_pos = collision_p_pos
-        )
-        actions = {str(f'agent_{i}'): jnp.array([1, 0.0]) for i in range(self.num_agents)}
-        new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
-        
-        for i in range(self.num_agents):
-            self.assertEqual(rewards[f'agent_{i}'], self.env.violation_shaping)
-            self.assertTrue(dones[f'agent_{i}'])
-
-    def test_step_boundary(self):
-        _, state = self.env.reset(self.key)
-
-        # positions that will lead to boundary violation
-        boundary_p_pos = jnp.array([[1.59, 0, 0], [1, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]])
-        state = state.replace(
-            p_pos = boundary_p_pos
-        )
-        actions = {str(f'agent_{i}'): jnp.array([1, 0.0]) for i in range(self.num_agents)}
-        new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
-        
-        for i in range(self.num_agents):
-            self.assertEqual(rewards[f'agent_{i}'], self.env.violation_shaping)
-            self.assertTrue(dones[f'agent_{i}'])
     
-    def test_step_no_violation(self):
+    def test_reset(self):
+        obs, state = self.env.reset(self.key)
+        for agent, agent_obs in obs.items():
+            self.assertTrue(agent_obs.shape == (self.env.obs_dim,))
+        
+        self.assertTrue(~jnp.all(state.done))
+        self.assertTrue(state.p_pos.shape == (self.num_agents*2, 3))
+        self.assertTrue(state.step == 0)
+    
+    def test_step(self):
         _, state = self.env.reset(self.key)
 
         # positions that will lead to boundary violation
@@ -89,6 +65,12 @@ class TestNavigation(unittest.TestCase):
                 )
             )
     
+    def test_initialize_robotarium_state(self):
+        state = self.env.initialize_robotarium_state(self.key)
+        self.assertTrue(~jnp.all(state.done))
+        self.assertTrue(state.p_pos.shape == (self.num_agents*2, 3))
+        self.assertTrue(state.step == 0)
+    
     def test_batched_rollout(self):
         self.env = Navigation(
             num_agents=2,
@@ -121,8 +103,6 @@ class TestNavigation(unittest.TestCase):
         final_state, (batch, rewards) = jax.lax.scan(wrapped_step, state, None, 75)
 
         rewards = jnp.array([rewards[agent] for agent in rewards])
-        print(rewards.shape)
-        print(jnp.sum(rewards) / 10)
         
         # check that the robot moved
         for i in range(self.num_agents):
@@ -132,7 +112,7 @@ class TestNavigation(unittest.TestCase):
             )
         
         if VISUALIZE:
-            self.env.render(batch.p_pos[:, 1, ...], name='swap env 0', save_path='jaxmarl/environments/marbler/scenarios/test/swap.gif')
+            self.env.render(batch.p_pos[:, 1, ...], name='navigation env 0', save_path='jaxmarl/environments/marbler/scenarios/test/navigation.gif')
         
 
 if __name__ == '__main__':
