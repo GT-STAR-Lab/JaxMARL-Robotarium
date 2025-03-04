@@ -1,4 +1,9 @@
 # MARBLER: Multi-Agent RL Benchmark and Learning Environment for the Robotarium
+<p float="middle">
+  <img src="figures/navigation.gif" width="40%" />
+  <img src="figures/navigation_fixed.gif" width="53%" /> 
+</p>
+
 ## Installation
 ### Install Jax and JaxMARL
 1. Create a conda env
