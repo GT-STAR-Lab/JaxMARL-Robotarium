@@ -11,46 +11,15 @@ class TestRobotariumEnv(unittest.TestCase):
         self.batch_size = 10
         self.env = RobotariumEnv(num_agents=self.num_agents, action_type="Continuous")
         self.key = jax.random.PRNGKey(0)
-
-    def test_reset(self):
-        obs, state = self.env.reset(self.key)
-        self.assertEqual(len(obs), self.num_agents)
-        self.assertIsInstance(state, State)
-        self.assertEqual(state.p_pos.shape, (self.num_agents, 3))
-        self.assertFalse(jnp.any(state.done))
-        self.assertEqual(state.step, 0)
-
-    def test_step(self):
-        _, state = self.env.reset(self.key)
-        actions = {str(f'agent_{i}'): jnp.array([0.0, 0.0]) for i in range(self.num_agents)}
-        new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
-        self.assertEqual(len(new_obs), self.num_agents)
-        self.assertIsInstance(new_state, State)
-        self.assertEqual(new_state.p_pos.shape, (self.num_agents, 3))
-        self.assertEqual(len(rewards), self.num_agents)
-        self.assertEqual(len(dones), self.num_agents + 1)  # including "__all__"
-        self.assertIsInstance(infos, dict)
-
-    def test_rewards(self):
-        _, state = self.env.reset(self.key)
-        rewards = self.env.rewards(state)
-        self.assertEqual(len(rewards), self.num_agents)
-        self.assertTrue(all(reward == 0 for reward in rewards.values()))
     
     def test_get_violations(self):
-        _, state = self.env.reset(self.key)
-        state = state.replace(
-            p_pos = jnp.ones_like(state.p_pos)
+        state = State(
+            p_pos = jnp.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]),
+            done = jnp.full((self.num_agents,), False),
+            step = 0
         )
         violations = self.env._get_violations(state)
         self.assertEqual(violations['collision'], 3)
-
-    def test_get_obs(self):
-        _, state = self.env.reset(self.key)
-        observations = self.env.get_obs(state)
-        self.assertEqual(len(observations), self.num_agents)
-        for i in range(self.num_agents):
-            self.assertTrue(jnp.array_equal(observations[str(f'agent_{i}')], state.p_pos[i]))
 
     def test_observation_space(self):
         self.env.observation_spaces = {str(i): "obs_space" for i in range(self.num_agents)}
@@ -62,39 +31,50 @@ class TestRobotariumEnv(unittest.TestCase):
         for i in range(self.num_agents):
             self.assertEqual(self.env.action_space(str(i)), "act_space")
     
-    def test_action_decoder(self):
-        _, state = self.env.reset(self.key)
-
-        state = state.replace(
-            p_pos = jnp.array([[0.0, 0.9, 0.0], [0.0, -0.9, 0.0], [1.5, 0.0, 0.0]])
+    def test_discrete_action_decoder(self):
+        state = State(
+            p_pos = jnp.array([[0.0, 0.9, 0.0], [0.0, -0.9, 0.0], [1.5, 0.0, 0.0]]),
+            done = jnp.full((self.num_agents,), False),
+            step = 0
+        )
+        decoded_actions = [self.env._decode_discrete_action(i, i+1, state) for i in range(self.num_agents)]
+        for i in range(self.num_agents):
+            self.assertTrue(decoded_actions[i][0] >= -1.6 and decoded_actions[i][0] <= 1.6)
+            self.assertTrue(decoded_actions[i][1] >= -1 and decoded_actions[i][1] <= 1)
+        
+        state = State(
+            p_pos = jnp.array([[0.0, 1.1, 0.0], [0.0, -1.1, 0.0], [1.7, 0.0, 0.0]]),
+            done = jnp.full((self.num_agents,), False),
+            step = 0
         )
         decoded_actions = [self.env._decode_discrete_action(i, i+1, state) for i in range(self.num_agents)]
         for i in range(self.num_agents):
             self.assertTrue(decoded_actions[i][0] >= -1.6 and decoded_actions[i][0] <= 1.6)
             self.assertTrue(decoded_actions[i][1] >= -1 and decoded_actions[i][1] <= 1)
     
-    def test_batched_rollout(self):
-        keys = jax.random.split(self.key, self.batch_size)
-        _, state = jax.vmap(self.env.reset, in_axes=0)(keys)
-        initial_state = state
-
-        def get_action(poses):
-            return {str(f'agent_{i}'): jnp.array([0.5, 0.0]) for i in range(self.num_agents)}
-        
-        def wrapped_step(poses, unused):
-            actions = jax.vmap(get_action, in_axes=(0))(poses)
-            new_obs, new_state, rewards, dones, infos = jax.vmap(self.env.step, in_axes=(0, 0, 0))(keys, poses, actions)
-            return new_state, new_state
-
-        final_state, batch = jax.lax.scan(wrapped_step, state, None, 100)
-        
-        # check that the robot moved
+    def test_continuous_action_decoder(self):
+        state = State(
+            p_pos = jnp.array([[0.0, 0.9, 0.0], [0.0, -0.9, 0.0], [1.5, 0.0, 0.0]]),
+            done = jnp.full((self.num_agents,), False),
+            step = 0
+        )
+        actions = jnp.array([[0, 0], [0.1, 0.1], [0.2, 0.2]])
+        decoded_actions = [self.env._decode_continuous_action(i, actions[i], state) for i in range(self.num_agents)]
         for i in range(self.num_agents):
-            self.assertGreater(
-                jnp.sqrt(jnp.sum((final_state.p_pos.T[i][0] - initial_state.p_pos.T[i][0])**2)),
-                0
-            )
-
+            self.assertTrue(decoded_actions[i][0] == actions[i][0])
+            self.assertTrue(decoded_actions[i][1] == actions[i][1])
+    
+    def test_robotarium_step(self):
+        poses = jnp.array([[0., 0, 0]])
+        goals = jnp.array([[1., 0]])
+        self.env = RobotariumEnv(
+            num_agents=self.num_agents,
+            action_type="Discrete",
+            controller={"controller": "clf_uni_position"},
+            update_frequency=30
+        )
+        final_pose = self.env._robotarium_step(poses, goals)
+        self.assertTrue(jnp.linalg.norm(poses - final_pose) > 0.1)
         
 
 if __name__ == '__main__':

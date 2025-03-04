@@ -22,7 +22,7 @@ class Navigation(RobotariumEnv):
             super().__init__(num_agents, max_steps, **kwargs)
 
         self.pos_shaping = kwargs.get('pos_shaping', -1)
-        self.violation_shaping = kwargs.get('violation_shaping', -10)
+        self.violation_shaping = kwargs.get('violation_shaping', 0)
         self.goal_radius = kwargs.get('goal_radius', 0.1)
 
         # Observation space
@@ -133,7 +133,7 @@ class Navigation(RobotariumEnv):
     
     def rewards(self, state: State) -> Dict[str, float]:
         """
-        Assigns rewards, (shaping reward of distance to goal +1 for reaching goal).
+        Assigns rewards, (shaping reward of distance to goal + violation penalty).
         
         Args:
             state: (State) environment state
@@ -154,12 +154,7 @@ class Navigation(RobotariumEnv):
         boundaries = violations['boundary']
         violation_rew = self.violation_shaping * (collisions + boundaries)
 
-        # final reward
-        on_goal = d_goal < self.goal_radius
-        # final_rew = jnp.where(jnp.sum(on_goal) < self.num_agents, 0, 10)
-
-        # return {agent: jnp.where(violation_rew == 0, pos_rew[i] + final_rew, violation_rew) for i, agent in enumerate(self.agents)}
-        return {agent: pos_rew[i] for i, agent in enumerate(self.agents)}
+        return {agent: jnp.where(violation_rew == 0, pos_rew[i], violation_rew) for i, agent in enumerate(self.agents)}
 
     def get_obs(self, state: State) -> Dict:
         """
@@ -278,7 +273,7 @@ class Navigation(RobotariumEnv):
         for i in range(self.num_agents):
             self.robotarium.axes.plot(
                 jnp.array(goals[i, 0]),
-                np.array(goals[i, 1]), 'o',
+                jnp.array(goals[i, 1]), 'o',
                 markersize=5,
                 color='black'
             )
