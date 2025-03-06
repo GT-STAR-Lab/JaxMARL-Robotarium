@@ -118,15 +118,15 @@ class RobotariumEnv:
         self.step_dist = kwargs.get('step_dist', 0.2)
         self.update_frequency = kwargs.get('update_frequency', 10)
 
+        # Visualizer (trivially set to robotarium so scenario logic remains cross compatible)
+        self.visualizer = self.robotarium
+
         # Action type
         self.action_dim = 5
         if action_type == DISCRETE_ACT:
             self.action_decoder = self._decode_discrete_action
         elif action_type == CONTINUOUS_ACT:
             self.action_decoder = self._decode_continuous_action
-        
-        # For saving gifs
-        self.frames = []
 
     def reset(self) -> Tuple[Dict[str, np.ndarray], State]:
         """
@@ -275,6 +275,29 @@ class RobotariumEnv:
         final_pose = poses.T
 
         return final_pose
+    
+    #-----------------------------------------
+    # Visualization Specific Functions
+    #-----------------------------------------
+    def determine_marker_size(self, marker_size):
+        """
+        Implementation copied from logic in robotarium_python_simulator/rps/utilities/misc.py
+
+        TODO: move this to rps_jax?
+        """
+
+        # Get the x and y dimension of the robotarium figure window in pixels
+        fig_dim_pixels = self.visualizer.axes.transData.transform(
+            np.array([[self.visualizer.boundaries[2]],[self.visualizer.boundaries[3]]])
+        )
+
+        # Determine the ratio of the robot size to the x-axis (the axis are
+        # normalized so you could do this with y and figure height as well).
+        marker_ratio = (marker_size)/(self.visualizer.boundaries[2])
+
+        # Determine the marker size in points so it fits the window. Note: This is squared
+        # as marker sizes are areas.
+        return (fig_dim_pixels[0,0] * marker_ratio)**2.
 
     #-----------------------------------------
     # Deployment Specific Functions
@@ -288,13 +311,6 @@ class RobotariumEnv:
         
         Returns:
             (State) initial state
-        """
-
-        raise NotImplementedError
-    
-    def visualize_robotarium(self, state: State):
-        """
-        Visualization for robotarium
         """
 
         raise NotImplementedError
