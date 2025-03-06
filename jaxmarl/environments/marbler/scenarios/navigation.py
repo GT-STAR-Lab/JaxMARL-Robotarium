@@ -187,8 +187,11 @@ class Navigation(RobotariumEnv):
         Args:
             state: (State) environment state
         """
-        
-        # add markers for goals
+        # reset goal markers if at first step
+        if state.step == 1:
+            self.goal_markers = []
+
+        # add markers for goals        
         goals = state.p_pos[self.num_agents:, :2]
         if not self.goal_markers:
             self.goal_markers = [
