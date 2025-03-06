@@ -23,6 +23,98 @@ class State:
     p_pos: chex.Array = None
     done: chex.Array = None
     step: int = None
+    het_rep: chex.Array = None
+
+class HetManager:
+    def __init__(
+            self,
+            num_agents,
+            type,
+            values=None,
+            obs_type=None,
+            sample=False,
+        ):
+        """
+        Initializes a manager for the heterogeneity representations in the environment.
+
+        Args:
+            num_agents: (int) number of agents
+            type: (str) type of heterogeneity representation, must be in HET_TYPES defined in constants.py
+            sample: (bool) indicates if heterogeneity representation is expected to be resampled at each environment reset
+            obs_type: (str) how the observation model represents heterogeneity, if None not represented
+        """
+        self.num_agents = num_agents
+        self.type = type
+
+        # set sampling logic, intended to be used on environment reset()
+        if type not in HET_TYPES:
+            raise ValueError(f'{type} not in supported heterogeneity types, {HET_TYPES}')
+        elif type == 'id':
+            # representation is one hot unqiue identifier
+            self.representation_set = jnp.eye(num_agents)
+            self.sample_fn = lambda key, x, num_agents: x
+        elif type == 'class':
+            # representation is a one hot class indentifier
+            self.representation_set = jnp.array(values)
+            if sample == True:
+                # TODO: set probabilities per class?
+                self.sample_fn = jax.random.choice
+            else:
+                self.sample_fn = lambda key, x, num_agents: x
+        elif type == 'capability_set':
+            # representation is a vector of scalar capabilities, sampled from passed in set of possible agents
+            self.representation_set = jnp.array(values)
+            if sample == True:
+                # TODO: set probabilities per class?
+                self.sample_fn = jax.random.choice
+            else:
+                self.sample_fn = lambda key, x, num_agents: x
+        elif type == 'capability_dist':
+            raise NotImplementedError
+        
+        # set observation logic, intended to be used in environment get_obs()
+        if obs_type is None:
+            self.obs_fn = lambda obs, state, a_idx: obs
+        elif type not in HET_TYPES:
+            raise ValueError(f'{type} not in supported heterogeneity types, {HET_TYPES}')
+        elif type == 'id':
+            # representation is one hot unqiue identifier
+            self.obs_fn = lambda obs, state, a_idx: jnp.concatenate([obs, jnp.eye(num_agents)[a_idx]])
+        elif type == 'class':
+            # representation is a one hot class indentifier
+            self.obs_fn = lambda obs, state, a_idx: jnp.concatenate([obs, state.het_rep[a_idx].reshape(-1)])
+        elif type == 'capability_set':
+            # representation is a vector of scalar capabilities, sampled from passed in set of possible agents
+            self.obs_fn = lambda obs, state, a_idx: jnp.concatenate([obs, state.het_rep[a_idx]])
+        elif type == 'capability_dist':
+            raise NotImplementedError
+    
+    def sample(self, key):
+        """
+        Sample a heterogeneity representation from the possible heterogeneity representations
+
+        Args:
+            key: (chex.PRNGKey)
+
+        Return:
+            (jnp.ndarray) sampled heterogeneity representaiton [num_agents, dim_c]
+        """
+        idxs = self.sample_fn(key, jnp.arange(self.representation_set.shape[0]), (self.num_agents,))
+        return self.representation_set[idxs]
+
+    def process_obs(self, obs, state, a_idx):
+        """
+        Update observation to include heterogeneity representation
+
+        Args:
+            obs: (Dict) original observation to be modified
+            state: (State) environment state
+            a_idx: (int) index of agent
+        
+        Returns:
+            (Dict) observations with heterogeneity information
+        """
+        return self.obs_fn(obs, state, a_idx)
 
 class Controller:
     def __init__(
