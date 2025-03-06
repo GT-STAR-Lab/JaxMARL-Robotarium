@@ -31,6 +31,9 @@ class Navigation(RobotariumEnv):
             self.observation_spaces = {
                 i: Box(-jnp.inf, jnp.inf, (self.obs_dim,)) for i in self.agents
             }
+        
+        # Visualization
+        self.goal_markers = []
 
     def reset(self, key) -> Tuple[Dict, State]:
         """
@@ -173,64 +176,31 @@ class Navigation(RobotariumEnv):
 
         return {a: jnp.concatenate([state.p_pos[i], to_goal[i]]) for i, a in enumerate(self.agents)}
     
-    def render(self, pos, name='env', save_path=None):
-        import numpy as np
-        import matplotlib.pyplot as plt
-        from PIL import Image
-        import imageio 
+    #-----------------------------------------
+    # Visualization Specific Functions (NOT INTENDED TO BE JITTED)
+    #-----------------------------------------
 
-        colors = plt.get_cmap('viridis', self.num_agents)
-        x_positions = []
-        for i in range(self.num_agents):
-            x_positions.append(np.array(pos[:, i, 0]))
-        y_positions = []
-        for i in range(self.num_agents):
-            y_positions.append(np.array(pos[:, i, 1]))
+    def render_frame(self, state: State):
+        """
+        Updates visualizer figure to include goal position markers
 
-        # Setup plot
-        fig, ax = plt.subplots(figsize=(6.4, 4))
-        ax.set_xlim(-1.6, 1.6)
-        ax.set_ylim(-1, 1)
-        ax.set_title(f'{name}')
-
-        # Plot full trajectory with transparency (trails)
-        for i in range(self.num_agents):
-            ax.plot(x_positions[i], y_positions[i], color=colors(i), alpha=0.3)
+        Args:
+            state: (State) environment state
+        """
         
-        # Initialize goal markers
-        for i in range(self.num_agents):
-            idx = i + self.num_agents
-            ax.plot(np.array(pos[0, idx, 0]), np.array(pos[0, idx, 1]), 'o', markersize=5, color=colors(i))
-
-        # Initialize moving robot markers
-        robots = []
-        for i in range(self.num_agents):
-            robot, = ax.plot([], [], 'o', markersize=10,  color=colors(i), label=f"robot {i}")
-            robots.append(robot)
-
-        ax.legend()
-
-        # List to store frames
-        frames = []
-
-        # Generate and save each frame
-        for frame in range(len(x_positions[0])):
-            for i in range(self.num_agents):
-                x, y = x_positions[i][frame], y_positions[i][frame]
-                robots[i].set_data([x], [y])
-
-            # Save the current frame as an image
-            fig.canvas.draw()
-            frame_image = np.array(fig.canvas.renderer.buffer_rgba())  # Get image from canvas
-            frames.append(Image.fromarray(frame_image))  # Convert to PIL Image
-
-        # Save frames as a GIF
-        if save_path:
-            frames[0].save(save_path, save_all=True, append_images=frames[1:], duration=20, loop=0)
-
-            print(f"GIF saved at {save_path}")
-
-        return frames
+        # add markers for goals
+        goals = state.p_pos[self.num_agents:, :2]
+        if not self.goal_markers:
+            self.goal_markers = [
+                self.visualizer.axes.scatter(
+                    jnp.array(goals[i, 0]),
+                    jnp.array(goals[i, 1]),
+                    marker='.',
+                    s=self.determine_marker_size(.05),
+                    facecolors='black',
+                    zorder=-2
+                ) for i in range(self.num_agents)
+            ]
 
     #-----------------------------------------
     # Deployment Specific Functions
@@ -260,24 +230,3 @@ class Navigation(RobotariumEnv):
         )
 
         return state
-
-    def visualize_robotarium(self, state: State):
-        """
-        Visualization for robotarium
-        """
-
-        fig = self.robotarium.figure
-        
-        # add markers for goals
-        goals = state.p_pos[self.num_agents:, :2]
-        for i in range(self.num_agents):
-            self.robotarium.axes.plot(
-                jnp.array(goals[i, 0]),
-                jnp.array(goals[i, 1]), 'o',
-                markersize=5,
-                color='black'
-            )
-
-        fig.canvas.draw()
-        frame = jnp.array(fig.canvas.renderer.buffer_rgba())
-        self.frames.append(frame)

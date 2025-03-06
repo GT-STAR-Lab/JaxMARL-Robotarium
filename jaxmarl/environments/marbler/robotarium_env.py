@@ -9,6 +9,7 @@ from flax import struct
 from typing import Tuple, Optional, Dict
 
 from jaxmarl.environments.marbler.constants import *
+from jaxmarl.environments.marbler.robotarium_visualizer import *
 from jaxmarl.environments.spaces import Box, Discrete
 
 from rps_jax.robotarium import *
@@ -19,9 +20,9 @@ from rps_jax.utilities.misc import *
 
 @struct.dataclass
 class State:
-    p_pos: chex.Array
-    done: chex.Array
-    step: int
+    p_pos: chex.Array = None
+    done: chex.Array = None
+    step: int = None
 
 class Controller:
     def __init__(
@@ -293,9 +294,90 @@ class RobotariumEnv:
         final_pose, _ = jax.lax.scan(wrapped_step, poses, None, self.update_frequency)
 
         return final_pose.T
+    
+    #-------------------------------------------------------------
+    # Visualization Specific Functions (NOT INTENDED TO BE JITTED)
+    #-------------------------------------------------------------
+    
+    def determine_marker_size(self, marker_size):
+        """
+        Implementation copied from logic in robotarium_python_simulator/rps/utilities/misc.py
 
-    def render(self, batch, name='env', save_path=None):
-        raise NotImplementedError
+        TODO: move this to rps_jax?
+        """
+
+        # Get the x and y dimension of the robotarium figure window in pixels
+        fig_dim_pixels = self.visualizer.axes.transData.transform(
+            np.array([[self.visualizer.boundaries[2]],[self.visualizer.boundaries[3]]])
+        )
+
+        # Determine the ratio of the robot size to the x-axis (the axis are
+        # normalized so you could do this with y and figure height as well).
+        marker_ratio = (marker_size)/(self.visualizer.boundaries[2])
+
+        # Determine the marker size in points so it fits the window. Note: This is squared
+        # as marker sizes are areas.
+        return (fig_dim_pixels[0,0] * marker_ratio)**2.
+
+    def render(self, batch_states, seed_index=0, env_index=0):
+        """
+        Renders rollout from training, designed to work with batched output from training runs
+
+        Args:
+            batch_states: (State) rollout states with anticipated dimensions [num_seeds, num_timesteps, num_envs, ...]
+            seed_index: (int) seed to visualize
+            env_index: (int) env to visualize
+
+        Returns:
+            List[Image] rendered rollout frames
+        """
+        from PIL import Image
+        import numpy as np
+
+        # extract poses
+        poses = np.array(batch_states.p_pos[seed_index, :-1, env_index, ...].transpose(0, 2, 1)[:, :, :self.num_agents])
+        t, _, _ = poses.shape
+
+        # initialize env_state for frame rendering logic
+        # TODO: figure out a better way, I kind of hate this
+        env_frame = State()
+        fields = {}
+        for attr in batch_states.__dict__.keys():
+            fields[f'{attr}'] = getattr(batch_states, attr)[seed_index, 0, env_index, ...]
+        env_frame = env_frame.replace(**fields)
+
+        # initialize robotarium visualizer
+        self.visualizer = RobotariumVisualizer(self.num_agents, poses[0])
+
+        frames = []
+        for i in range(t):
+            fields = {}
+            for attr in batch_states.__dict__.keys():
+                fields[f'{attr}'] = getattr(batch_states, attr)[seed_index, i, env_index, ...]
+            env_frame = env_frame.replace(**fields)
+            self.visualizer.update(poses[i])
+
+            # call scenario specific frame rendering if applicable
+            try:
+                self.render_frame(env_frame)
+            except:
+                pass
+
+            # render the current frame
+            self.visualizer.figure.canvas.draw()
+            frame_image = np.array(self.visualizer.figure.canvas.renderer.buffer_rgba())
+            frames.append(Image.fromarray(frame_image))
+        
+        return frames
+    
+    def render_frame(self, env_state):
+        """
+        Scenario specific rendering logic
+
+        Args:
+            state: (State) environment state
+        """
+        raise NotImplementedError        
     
     #-----------------------------------------
     # Deployment Specific Functions
@@ -306,13 +388,6 @@ class RobotariumEnv:
 
         Args:
             seed: (int) seed for random functions
-        """
-
-        raise NotImplementedError
-    
-    def visualize_robotarium(self):
-        """
-        Visualization for robotarium
         """
 
         raise NotImplementedError

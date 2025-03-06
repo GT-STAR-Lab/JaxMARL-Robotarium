@@ -47,6 +47,7 @@ if __name__ == "__main__":
     obs = env.get_obs(state)
     hs = torch.from_numpy(jnp.zeros((num_agents, config.hidden_dim))).to(torch.float32)
     one_hot_id = jnp.eye(num_agents)
+    frames = []
     for i in range(max_steps):
         # get agent action
         if config.preprocess_obs:
@@ -60,11 +61,16 @@ if __name__ == "__main__":
 
         obs, state, reward, dones, info = env.step_env(None, state, actions)
 
-        env.visualize_robotarium(state)
+        # visualize
+        env.render_frame(state)
+        env.visualizer.figure.canvas.draw()
+        if config.save_gif:
+            frame = jnp.array(env.visualizer.figure.canvas.renderer.buffer_rgba())
+            frames.append(frame)
 
     
     if config.save_gif:
         import imageio
-        imageio.mimsave(f'{config.scenario.lower()}.gif', env.frames, duration=50, loop=0)
+        imageio.mimsave(f'{config.scenario.lower()}.gif', frames, duration=100, loop=0)
     
     env.robotarium.call_at_scripts_end()
