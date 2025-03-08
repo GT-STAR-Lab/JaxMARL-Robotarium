@@ -27,10 +27,9 @@ class TestNavigation(unittest.TestCase):
     def test_step(self):
         _, state = self.env.reset(self.key)
 
-        # positions that will lead to boundary violation
-        boundary_p_pos = jnp.array([[-1., 0, 0], [1, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]])
+        p_pos = jnp.array([[-1., 0, 0], [1, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]])
         state = state.replace(
-            p_pos = boundary_p_pos
+            p_pos = p_pos
         )
         actions = {str(f'agent_{i}'): jnp.array([1, 0.0]) for i in range(self.num_agents)}
         new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)

@@ -121,7 +121,7 @@ class TestHetManager(unittest.TestCase):
             'heterogeneity': {
                 'type': 'class',
                 'obs_type': 'class',
-                'values': [1, 2],
+                'values': [[0, 0], [1, 0]],
                 'sample': True
             }
         }
@@ -129,7 +129,10 @@ class TestHetManager(unittest.TestCase):
         obs, state = env.reset(jax.random.PRNGKey(0))
 
         for i, (agent, o) in enumerate(obs.items()):
-            self.assertTrue(o[-1] in env.het_manager.representation_set)
+            self.assertTrue(
+                jnp.array_equal(o[-2:], jnp.array([0, 0])) \
+                or jnp.array_equal(o[-2:], jnp.array([1, 0]))                  
+            )
         
         self.assertTrue(state.het_rep.shape[0] == args['num_agents'])
     
@@ -151,6 +154,35 @@ class TestHetManager(unittest.TestCase):
                 jnp.array_equal(o[-2:], env.het_manager.representation_set[0]) \
                 or jnp.array_equal(o[-2:], env.het_manager.representation_set[1])
             )
+        
+        self.assertTrue(state.het_rep.shape[0] == args['num_agents'])
+    
+    def test_full_capability_set(self):
+        args = {
+            'num_agents': 3,
+            'heterogeneity': {
+                'type': 'capability_set',
+                'obs_type': 'full_capability_set',
+                'values': [[0, 1.], [1., 0]],
+                'sample': True
+            }
+        }
+        env = MockEnv(**args)
+        obs, state = env.reset(jax.random.PRNGKey(0))
+
+        obs = jnp.array([o for _, o in obs.items()])
+
+        # agent 0
+        expected_het = jnp.concatenate([state.het_rep[0], state.het_rep[1], state.het_rep[2]])
+        self.assertTrue(jnp.array_equal(obs[0, -env.het_manager.dim_c:], expected_het))
+
+        # agent 1
+        expected_het = jnp.concatenate([state.het_rep[1], state.het_rep[2], state.het_rep[0]])
+        self.assertTrue(jnp.array_equal(obs[1, -env.het_manager.dim_c:], expected_het))
+
+        # agent 2
+        expected_het = jnp.concatenate([state.het_rep[2], state.het_rep[0], state.het_rep[1]])
+        self.assertTrue(jnp.array_equal(obs[2, -env.het_manager.dim_c:], expected_het))
         
         self.assertTrue(state.het_rep.shape[0] == args['num_agents'])
     
