@@ -187,13 +187,14 @@ class PredatorCapturePrey(RobotariumEnv):
         sense_dist = jnp.linalg.norm(sense_pos[:, None] - prey_pos[None, :], axis=-1)    # get dist from all sensing agents to all prey
         sensed = sense_dist < state.het_rep[:self.num_sensing, 0, None] # compare to sensing radii per agent
         sensed = sensed.any(axis=0)
+        sensed = jnp.logical_or(state.prey_sensed, sensed)
         num_sensed = jnp.sum(sensed*1 - state.prey_sensed*1) # multiplied by 1 to get conversion to int
 
         # update captured prey (if prey captured, mark as captured if not already captured)
         capture_pos = state.p_pos[self.num_sensing:self.num_sensing+self.num_capturing, :2]  # get x, y of only capturing agents
         capture_dist = jnp.linalg.norm(capture_pos[:, None] - prey_pos[None, :], axis=-1)    # get dist from all capturing agents to all prey
         captured = capture_dist < state.het_rep[self.num_sensing:self.num_sensing+self.num_capturing, 1, None] # compare to capture radii per agent
-        captured = captured.any(axis=0)
+        captured = jnp.logical_or(state.prey_captured, captured)
         num_captured = jnp.sum(captured*1 - state.prey_captured*1) # multiplied by 1 to get conversion to int
 
         # compute task reward
