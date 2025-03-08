@@ -28,7 +28,8 @@ from .environments import (
     Overcooked,
     CoinGame,
     JaxNav,
-    Navigation
+    Navigation,
+    PredatorCapturePrey
 )
 
 
@@ -118,6 +119,8 @@ def make(env_id: str, **env_kwargs):
     # 10. Marbler
     elif env_id == "navigation":
         env = Navigation(**env_kwargs)
+    elif env_id == "predator_capture_prey":
+        env = PredatorCapturePrey(**env_kwargs)
 
     return env
 
@@ -151,5 +154,6 @@ registered_envs = [
     "overcooked",
     "coin_game",
     "jaxnav",
-    "navigation"
+    "navigation",
+    "predator_capture_prey"
 ]

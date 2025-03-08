@@ -101,9 +101,8 @@ class Navigation(RobotariumEnv):
 
         # check for violations
         violations = self._get_violations(state)
-        collision = violations['collision'] > 0
-        boundary = violations['boundary'] > 0
-        # done = jnp.full((self.num_agents), ((state.step >= self.max_steps-1) | boundary | collision))
+
+        # set dones
         done = jnp.full((self.num_agents), state.step >= self.max_steps)
         state = state.replace(
             done=done,
@@ -216,7 +215,7 @@ class Navigation(RobotariumEnv):
             seed: (int) seed for random functions
         
         Returns:
-            (jnp.ndarray) initial poses (3xN) for robots
+            (State) initial state
         """
 
         poses = generate_initial_conditions(
