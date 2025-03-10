@@ -1,5 +1,5 @@
 """
-Simple scenario where robots must swap positions.
+Simple scenario where robots must navigate to goals.
 """
 
 # wrap import statement in try-except block to allow for correct import during deployment
@@ -47,12 +47,13 @@ class Navigation(RobotariumEnv):
         """
 
         # randomly generate initial poses for robots
+        key, key_a = jax.random.split(key)
         poses = generate_initial_conditions(
             2*self.num_agents,
             width=ROBOTARIUM_WIDTH,
             height=ROBOTARIUM_HEIGHT,
             spacing=0.5,
-            key=key
+            key=key_a
         )
         self.robotarium.poses = poses[:, :self.num_agents]
 

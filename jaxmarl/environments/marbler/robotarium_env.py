@@ -29,6 +29,11 @@ class State:
     prey_sensed: chex.Array = None
     prey_captured: chex.Array = None
 
+    # material transport specific fields
+    zone1_load: int = None
+    zone2_load: int = None
+    payload: chex.Array = None
+
 class HetManager:
     def __init__(
             self,
@@ -460,6 +465,8 @@ class RobotariumEnv:
         env_frame = State()
         fields = {}
         for attr in batch_states.__dict__.keys():
+            if getattr(batch_states, attr) is None:
+                    continue
             fields[f'{attr}'] = getattr(batch_states, attr)[seed_index, 0, env_index, ...]
         env_frame = env_frame.replace(**fields)
 
@@ -470,6 +477,8 @@ class RobotariumEnv:
         for i in range(t):
             fields = {}
             for attr in batch_states.__dict__.keys():
+                if getattr(batch_states, attr) is None:
+                    continue
                 fields[f'{attr}'] = getattr(batch_states, attr)[seed_index, i, env_index, ...]
             env_frame = env_frame.replace(**fields)
             self.visualizer.update(poses[i])

@@ -1,5 +1,5 @@
 """
-Simple scenario where robots must swap positions.
+Predator Capture Prey where sensing robots discover prey and capture robots capture prey.
 """
 
 # wrap import statement in try-except block to allow for correct import during deployment
@@ -27,11 +27,18 @@ class PredatorCapturePrey(RobotariumEnv):
         self.sense_shaping = kwargs.get('sense_shaping', 1)
         self.capture_shaping = kwargs.get('capture_shaping', 5)
         self.violation_shaping = kwargs.get('violation_shaping', 0)
+        self.time_shaping = kwargs.get('time_shaping', -0.05)
 
         # Heterogeneity
         self.num_sensing = kwargs.get('num_sensing', 2)
         self.num_capturing = kwargs.get('num_capturing', 2)
-        het_args = kwargs.get('heterogeneity', {'num_agents': num_agents, 'type': 'id', 'obs_type': None})
+        default_het_args = {
+            'num_agents': num_agents,
+            'type': 'capability_set',
+            'values': [[0.45, 0], [0.45, 0], [0, 0.25], [0, 0.25]],
+            'obs_type': None
+        }
+        het_args = kwargs.get('heterogeneity', default_het_args)
         het_args['num_agents'] = num_agents
         self.het_manager = HetManager(**het_args)
 
@@ -58,22 +65,24 @@ class PredatorCapturePrey(RobotariumEnv):
         """
 
         # randomly generate initial poses for robots
+        key, key_a = jax.random.split(key)
         agent_poses = generate_initial_conditions(
             self.num_agents,
             width=ROBOTARIUM_WIDTH / 3,
             height=ROBOTARIUM_HEIGHT,
             spacing=0.5,
-            key=key
+            key=key_a
         )
         self.robotarium.poses = agent_poses[:, :self.num_agents]
 
         # randomly generate initial poses for prey
+        key, key_p = jax.random.split(key)
         prey_poses = generate_initial_conditions(
             self.num_prey,
             width=ROBOTARIUM_WIDTH,
             height=ROBOTARIUM_HEIGHT,
             spacing=0.5,
-            key=key
+            key=key_p
         )
         
         poses = jnp.concatenate([agent_poses, prey_poses], axis=-1)
@@ -81,11 +90,12 @@ class PredatorCapturePrey(RobotariumEnv):
         # set velocities to 0
         self.robotarium.set_velocities(jnp.arange(self.num_agents), jnp.zeros((2, self.num_agents)))
 
+        key, key_het = jax.random.split(key)
         state = State(
             p_pos=poses.T,
             done=jnp.full((self.num_agents), False),
             step=0,
-            het_rep = self.het_manager.sample(key),
+            het_rep = self.het_manager.sample(key_het),
             prey_sensed = jnp.full((self.num_prey,), False),
             prey_captured = jnp.full((self.num_prey,), False)
         )
@@ -159,10 +169,9 @@ class PredatorCapturePrey(RobotariumEnv):
         info = {
             'collision': jnp.full((self.num_agents,), violations['collision']),
             'boundary': jnp.full((self.num_agents,), violations['boundary']),
-            'success_rate': jnp.full(
-                (self.num_agents,),
-                all_captured
-            )
+            'success_rate': jnp.full((self.num_agents,), all_captured),
+            'prey_sensed': jnp.full((self.num_agents,), jnp.sum(state.prey_sensed)),
+            'prey_captured': jnp.full((self.num_agents,), jnp.sum(state.prey_captured)),
         }
 
         dones = {a: done[i] for i, a in enumerate(self.agents)}
@@ -197,8 +206,12 @@ class PredatorCapturePrey(RobotariumEnv):
         captured = jnp.logical_or(state.prey_captured, captured)
         num_captured = jnp.sum(captured*1 - state.prey_captured*1) # multiplied by 1 to get conversion to int
 
+        # check if all prey captured, if so don't apply penalty
+        all_captured = jnp.sum(captured) == self.num_prey
+        prey_remaining = jnp.where(all_captured, 0, 1)
+
         # compute task reward
-        rew = num_sensed * self.sense_shaping + num_captured * self.capture_shaping
+        rew = (num_sensed * self.sense_shaping) + (num_captured * self.capture_shaping) + (prey_remaining * self.time_shaping)
 
         # global penalty for collisions and boundary violation
         violations = self._get_violations(state)

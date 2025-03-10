@@ -3,31 +3,35 @@ import jax
 import jax.numpy as jnp
 
 from jaxmarl.environments.marbler.robotarium_env import State
-from jaxmarl.environments.marbler.scenarios.predator_capture_prey import PredatorCapturePrey
+from jaxmarl.environments.marbler.scenarios.material_transport import MaterialTransport
 
 VISUALIZE = False
 
-class TestPredatorCapturePrey(unittest.TestCase):
-    """unit tests for predator_capture_prey.py"""
+class TestMaterialTransport(unittest.TestCase):
+    """unit tests for test_material_transport.py"""
 
     def setUp(self):
         self.num_agents = 2
-        self.num_prey = 2
         self.batch_size = 10
-        self.env = PredatorCapturePrey(
+        self.env = MaterialTransport(
             num_agents=self.num_agents,
-            num_prey=self.num_prey,
             action_type="Discrete",
-            max_steps=80,
+            max_steps=70,
             update_frequency=1,
-            num_sensing=1,
-            num_capturing=1,
             time_shaping=0,
             heterogeneity={
                 'type': 'capability_set',
                 'obs_type': 'full_capability_set',
-                'values': [[0.2, 0], [0, 0.4]],
+                'values': [[.45, 5], [.15, 15]],
                 'sample': False
+            },
+            zone1_dist = {
+                'mu': 50,
+                'sigma': 1
+            },
+            zone2_dist = {
+                'mu': 10,
+                'sigma': 1
             }
         )
         self.key = jax.random.PRNGKey(0)
@@ -38,77 +42,58 @@ class TestPredatorCapturePrey(unittest.TestCase):
             self.assertTrue(agent_obs.shape == (self.env.obs_dim,))
         
         self.assertTrue(~jnp.all(state.done))
-        self.assertTrue(~jnp.all(state.prey_sensed))
-        self.assertTrue(~jnp.all(state.prey_captured))
-        self.assertTrue(state.p_pos.shape == (self.num_agents + self.num_prey, 3))
+        self.assertTrue(~jnp.all(state.payload))
+        self.assertTrue(state.zone1_load > 0)
+        self.assertTrue(state.zone2_load > 0)
+        self.assertTrue(state.p_pos.shape == (self.num_agents, 3))
         self.assertTrue(state.step == 0)
     
     def test_step(self):
         _, state = self.env.reset(self.key)
-        p_pos = jnp.array([[-0.5, 0, 0], [0.5, 0, 0], [-0.5, 0, 0], [0.5, 0, 0]])
+        p_pos = jnp.array([[0.0, 0, 0], [-1.25, 0, 0]])
         state = state.replace(
-            p_pos = p_pos
+            p_pos = p_pos,
+            payload = jnp.array([0, 1])
         )
         actions = {str(f'agent_{i}'): jnp.array([0]) for i in range(self.num_agents)}
         new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
 
-        self.assertTrue(jnp.array_equal(new_state.prey_sensed, jnp.array([1, 0])))
-        self.assertTrue(jnp.array_equal(new_state.prey_captured, jnp.array([0, 1])))
-        
+        self.assertTrue(jnp.array_equal(new_state.payload, jnp.array([1, 0])))
+        self.assertAlmostEqual(state.zone1_load - new_state.zone1_load, state.het_rep[0, 1])
+        self.assertTrue(new_state.zone2_load - state.zone2_load == 0)
+
         for i in range(self.num_agents):
             self.assertFalse(dones[f'agent_{i}'])
     
     def test_reward(self):
         _, state = self.env.reset(self.key)
-
-        # sense and capture
-        p_pos = jnp.array([[-0.5, 0, 0], [0.5, 0, 0], [-0.5, 0, 0], [0.5, 0, 0]])
+        p_pos = jnp.array([[0.0, 0, 0], [-1.25, 0, 0]])
         state = state.replace(
-            p_pos = p_pos
+            p_pos = p_pos,
+            payload = jnp.array([0, 1])
         )
         rewards = self.env.rewards(state)
 
-        self.assertEqual(rewards['agent_0'], 6)
-        self.assertEqual(rewards['agent_1'], 6)
-
-        # only sense
-        p_pos = jnp.array([[-0.5, 0, 0], [0.5, 0, 0], [-0.5, 0, 0], [0, 0, 0]])
-        state = state.replace(
-            p_pos = p_pos
-        )
-        rewards = self.env.rewards(state)
-        self.assertEqual(rewards['agent_0'], 1)
-        self.assertEqual(rewards['agent_1'], 1)
-
-        # only capture
-        p_pos = jnp.array([[-0.5, 0, 0], [0.5, 0, 0], [0, 0, 0], [0.5, 0, 0]])
-        state = state.replace(
-            p_pos = p_pos
-        )
-        rewards = self.env.rewards(state)
-        self.assertEqual(rewards['agent_0'], 5)
-        self.assertEqual(rewards['agent_1'], 5)
+        self.assertAlmostEqual(rewards['agent_0'], 0.1)
+        self.assertAlmostEqual(rewards['agent_1'], 0.1)
     
     def test_get_obs(self):
         _, state = self.env.reset(self.key)
-
-        # one sensed, none captured
-        p_pos = jnp.array([[-0.5, 0, 0], [0.5, 0, 0], [-0.5, 0, 0], [0, 0, 0]])
+        p_pos = jnp.array([[0.0, 0, 0], [-1.25, 0, 0]])
         state = state.replace(
             p_pos = p_pos,
-            prey_sensed = jnp.array([True, False])
+            payload = jnp.array([0, 1])
         )
         obs = self.env.get_obs(state)
-        self.assertEqual(len(obs), self.num_agents)
         
         # agent 0
-        expected_obs = jnp.array([-0.5, 0, 0, 0.5, 0, 0, -0.5, 0, 0, -5, -5, -5])
+        expected_obs = jnp.array([0.0, 0, 0, -1.25, 0, 0, state.zone1_load[0], state.zone2_load[0]])
         self.assertTrue(
             jnp.array_equal(obs['agent_0'][:-self.env.het_manager.dim_c], expected_obs)
         )
 
         # agent 0
-        expected_obs = jnp.array([0.5, 0, 0, -0.5, 0, 0, -0.5, 0, 0, -5, -5, -5])
+        expected_obs = jnp.array([-1.25, 0, 0, 0.0, 0, 0, state.zone1_load[0], state.zone2_load[0]])
         self.assertTrue(
             jnp.array_equal(obs['agent_1'][:-self.env.het_manager.dim_c], expected_obs)
         )
@@ -116,27 +101,32 @@ class TestPredatorCapturePrey(unittest.TestCase):
     def test_initialize_robotarium_state(self):
         state = self.env.initialize_robotarium_state(self.key)
         self.assertTrue(~jnp.all(state.done))
-        self.assertTrue(~jnp.all(state.prey_sensed))
-        self.assertTrue(~jnp.all(state.prey_captured))
-        self.assertTrue(state.p_pos.shape == (self.num_agents + self.num_prey, 3))
+        self.assertTrue(~jnp.all(state.payload))
+        self.assertTrue(state.p_pos.shape == (self.num_agents, 3))
         self.assertTrue(state.step == 0)
     
     def test_batched_rollout(self):
-        self.env = PredatorCapturePrey(
+        self.env = MaterialTransport(
             num_agents=self.num_agents,
-            num_prey=self.num_prey,
             action_type="Discrete",
-            max_steps=80,
+            max_steps=70,
             update_frequency=1,
-            num_sensing=1,
-            num_capturing=1,
+            time_shaping=0,
             heterogeneity={
                 'type': 'capability_set',
                 'obs_type': 'full_capability_set',
-                'values': [[0.2, 0], [0, 0.4]],
+                'values': [[.45, 5], [.15, 15]],
                 'sample': False
             },
-            controller={
+            zone1_dist = {
+                'mu': 50,
+                'sigma': 1
+            },
+            zone2_dist = {
+                'mu': 10,
+                'sigma': 1
+            },
+            controller = {
                 "controller": "clf_uni_position",
                 "barrier_fn": "robust_barriers",
             }
@@ -175,7 +165,7 @@ class TestPredatorCapturePrey(unittest.TestCase):
             render_batch = render_batch.replace(**fields)
             frames = self.env.render(render_batch, seed_index=0, env_index=0)
             frames[0].save(
-                'jaxmarl/environments/marbler/scenarios/test/pcp.gif',
+                'jaxmarl/environments/marbler/scenarios/test/mt.gif',
                 save_all=True,
                 append_images=frames[1:],
                 duration=100,
