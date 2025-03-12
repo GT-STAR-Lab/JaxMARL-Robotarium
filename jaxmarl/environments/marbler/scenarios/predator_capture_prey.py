@@ -13,21 +13,7 @@ class PredatorCapturePrey(RobotariumEnv):
         self.name = 'MARBLER_predator_capture_prey'
         self.backend = kwargs.get('backend', 'jax')
 
-        if self.backend == 'jax':
-            super().__init__(num_agents, max_steps, **kwargs)
-        else:
-            self.num_agents = num_agents
-            self.initial_state = self.initialize_robotarium_state(kwargs.get("seed", 0))
-            kwargs['initial_conditions'] = self.initial_state.p_pos[:self.num_agents, :].T
-            super().__init__(num_agents, max_steps, **kwargs)
-        
         self.num_prey = kwargs.get('num_prey', 6)
-
-        # Reward shaping
-        self.sense_shaping = kwargs.get('sense_shaping', 1)
-        self.capture_shaping = kwargs.get('capture_shaping', 5)
-        self.violation_shaping = kwargs.get('violation_shaping', 0)
-        self.time_shaping = kwargs.get('time_shaping', -0.05)
 
         # Heterogeneity
         self.num_sensing = kwargs.get('num_sensing', 2)
@@ -41,6 +27,21 @@ class PredatorCapturePrey(RobotariumEnv):
         het_args = kwargs.get('heterogeneity', default_het_args)
         het_args['num_agents'] = num_agents
         self.het_manager = HetManager(**het_args)
+
+        # Initialize backend
+        if self.backend == 'jax':
+            super().__init__(num_agents, max_steps, **kwargs)
+        else:
+            self.num_agents = num_agents
+            self.initial_state = self.initialize_robotarium_state(kwargs.get("seed", 0))
+            kwargs['initial_conditions'] = self.initial_state.p_pos[:self.num_agents, :].T
+            super().__init__(num_agents, max_steps, **kwargs)
+
+        # Reward shaping
+        self.sense_shaping = kwargs.get('sense_shaping', 1)
+        self.capture_shaping = kwargs.get('capture_shaping', 5)
+        self.violation_shaping = kwargs.get('violation_shaping', 0)
+        self.time_shaping = kwargs.get('time_shaping', -0.05)
 
         # Observation space (poses of all agents, prey locations if sensed, capabilities)
         self.obs_dim = (3 * self.num_agents) + (3 * self.num_prey) + self.het_manager.dim_c
@@ -70,7 +71,7 @@ class PredatorCapturePrey(RobotariumEnv):
             self.num_agents,
             width=ROBOTARIUM_WIDTH / 3,
             height=ROBOTARIUM_HEIGHT,
-            spacing=0.5,
+            spacing=0.3,
             key=key_a
         )
         self.robotarium.poses = agent_poses[:, :self.num_agents]
@@ -360,13 +361,13 @@ class PredatorCapturePrey(RobotariumEnv):
             self.num_agents,
             width=ROBOTARIUM_WIDTH / 3,
             height=ROBOTARIUM_HEIGHT,
-            spacing=0.5,
+            spacing=0.3,
         )
 
         # randomly generate initial poses for prey
         prey_poses = generate_initial_conditions(
             self.num_prey,
-            width=ROBOTARIUM_WIDTH / 3,
+            width=ROBOTARIUM_WIDTH,
             height=ROBOTARIUM_HEIGHT,
             spacing=0.5,
         )

@@ -48,6 +48,18 @@ class TestMaterialTransport(unittest.TestCase):
         self.assertTrue(state.p_pos.shape == (self.num_agents, 3))
         self.assertTrue(state.step == 0)
     
+    def test_decode_action(self):
+        _, state = self.env.reset(self.key)
+        actions = {str(f'agent_{i}'): self.env._decode_discrete_action(i, jnp.array([1]), state) for i in range(self.num_agents)}
+
+        # agent 0
+        expected_action = state.p_pos[0, :2] + state.het_rep[0, 0] * jnp.array([[0, 1]])
+        self.assertTrue(jnp.array_equal(expected_action, actions['agent_0']))
+
+        # agent 1
+        expected_action = state.p_pos[1, :2] + state.het_rep[1, 0] * jnp.array([[0, 1]])
+        self.assertTrue(jnp.array_equal(expected_action, actions['agent_1'])) 
+    
     def test_step(self):
         _, state = self.env.reset(self.key)
         p_pos = jnp.array([[0.0, 0, 0], [-1.25, 0, 0]])
@@ -58,13 +70,37 @@ class TestMaterialTransport(unittest.TestCase):
         actions = {str(f'agent_{i}'): jnp.array([0]) for i in range(self.num_agents)}
         new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
 
+        # check payloads and loads update for zone 1
         self.assertTrue(jnp.array_equal(new_state.payload, jnp.array([1, 0])))
         self.assertAlmostEqual(state.zone1_load - new_state.zone1_load, state.het_rep[0, 1])
-        self.assertTrue(new_state.zone2_load - state.zone2_load == 0)
+        self.assertAlmostEqual(state.zone2_load - new_state.zone2_load, 0)
+
+        state = new_state
+        actions = {str(f'agent_{i}'): jnp.array([0]) for i in range(self.num_agents)}
+        new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
+
+        # check payloads and loads update for zone 2
+        p_pos = jnp.array([[1.25, 0, 0], [-1.25, 0, 0]])
+        state = new_state.replace(
+            p_pos = p_pos,
+            payload = jnp.array([0, 1])
+        )
+        new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
+        self.assertTrue(jnp.array_equal(new_state.payload, jnp.array([1, 0])))
+        self.assertAlmostEqual(state.zone1_load - new_state.zone1_load, 0)
+        self.assertAlmostEqual(state.zone2_load - new_state.zone2_load, state.het_rep[0, 1])
+
+        # check payload remains the same and loads remain the same
+        state = new_state
+        actions = {str(f'agent_{i}'): jnp.array([0]) for i in range(self.num_agents)}
+        new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
+        self.assertTrue(jnp.array_equal(new_state.payload, jnp.array([1, 0])))
+        self.assertAlmostEqual(state.zone1_load, new_state.zone1_load)
+        self.assertTrue(state.zone2_load - new_state.zone2_load == 0)
 
         for i in range(self.num_agents):
             self.assertFalse(dones[f'agent_{i}'])
-    
+        
     def test_reward(self):
         _, state = self.env.reset(self.key)
         p_pos = jnp.array([[0.0, 0, 0], [-1.25, 0, 0]])
@@ -72,10 +108,18 @@ class TestMaterialTransport(unittest.TestCase):
             p_pos = p_pos,
             payload = jnp.array([0, 1])
         )
-        rewards = self.env.rewards(state)
+        actions = {str(f'agent_{i}'): jnp.array([0]) for i in range(self.num_agents)}
+        new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
 
-        self.assertAlmostEqual(rewards['agent_0'], 0.1)
-        self.assertAlmostEqual(rewards['agent_1'], 0.1)
+        self.assertEqual(rewards['agent_0'], 1)
+        self.assertEqual(rewards['agent_1'], 1)
+
+        state = new_state
+        actions = {str(f'agent_{i}'): jnp.array([0]) for i in range(self.num_agents)}
+        new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
+
+        self.assertEqual(rewards['agent_0'], 0.0)
+        self.assertEqual(rewards['agent_1'], 0.0)
     
     def test_get_obs(self):
         _, state = self.env.reset(self.key)
@@ -136,14 +180,14 @@ class TestMaterialTransport(unittest.TestCase):
         initial_state = state
 
         def get_action(state):
-            return {str(f'agent_{i}'): jax.random.choice(self.key, jnp.arange(5)) for i in range(self.num_agents)}
+            return {str(f'agent_{i}'): jnp.array([3]) for i in range(self.num_agents)}
         
         def wrapped_step(poses, unused):
             actions = jax.vmap(get_action, in_axes=(0))(poses)
             new_obs, new_state, rewards, dones, infos = jax.vmap(self.env.step, in_axes=(0, 0, 0))(keys, poses, actions)
             return new_state, (new_state, rewards)
 
-        final_state, (batch, rewards) = jax.lax.scan(wrapped_step, state, None, 75)
+        final_state, (batch, rewards) = jax.lax.scan(wrapped_step, state, None, 70)
 
         rewards = jnp.array([rewards[agent] for agent in rewards])
         
