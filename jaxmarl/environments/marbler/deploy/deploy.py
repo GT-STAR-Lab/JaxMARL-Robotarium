@@ -9,6 +9,7 @@ import yaml
 import importlib
 import numpy as np
 import shutil
+import re
 
 from safetensors.flax import load_file
 
@@ -72,10 +73,11 @@ def flax_to_torch(flax_state_dict, torch_state_dict):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--name', type=str, default='experiment', help='folder to save deployment files')
+    parser.add_argument('--config', type=str, default='config.yaml', help='configuration file for deployed scenario')
     args = parser.parse_args()
 
     module_dir = os.path.dirname(__file__)
-    config_path = os.path.join(module_dir, 'config.yaml')
+    config_path = os.path.join(module_dir, args.config)
 
     # get experiment output dir
     output_dir = os.path.join(module_dir, 'robotarium_submissions', args.name)
@@ -105,10 +107,10 @@ if __name__ == "__main__":
     data = data.replace(config.model_weights, 'agent.tiff')
     data = data.replace('"save_gif": True', '"save_gif": False')
     with open(config_output_path, 'w') as file:
-            file.write(data)
+        file.write(data)
     
     # copy scenario and constants files
-    scenario_py = f'{config.scenario.lower()}.py'
+    scenario_py = config.scenario_file
     scenario_path = os.path.join(
         "/".join(module_dir.split("/")[:-1]),
         'scenarios',
@@ -116,6 +118,18 @@ if __name__ == "__main__":
     )
     scenario_output_path = os.path.join(output_dir, scenario_py)
     shutil.copy(scenario_path, scenario_output_path)
+
+    # update scenario file to bypass any random key setting
+    jax_key_pattern = re.compile(r"(\w+(?:,\s*\w+)*)\s*=\s*jax\.random\.split\(.*\)")
+    def replacer(match):
+        keys = match.group(1)
+        num_keys = keys.count(',') + 1  # Count the number of keys
+        return f"{keys} = {', '.join(['None'] * num_keys)}"
+    with open(scenario_output_path, 'r') as file:
+        data = file.read()
+    data = jax_key_pattern.sub(replacer, data)
+    with open(scenario_output_path, 'w') as file:
+        file.write(data)
 
     constants_path = os.path.join(
         "/".join(module_dir.split("/")[:-1]),

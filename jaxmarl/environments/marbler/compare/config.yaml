@@ -1,0 +1,33 @@
+"seed": 0
+"preprocess_obs": False
+"backend": "python"
+
+# ENV
+"scenario": "PredatorCapturePrey"
+"scenario_file": "predator_capture_prey.py"
+"num_agents": 4
+"number_of_robots": 4
+"num_sensing": 2
+"num_capturing": 2
+"max_steps": 80
+"action_type": "Discrete"
+"controller": "clf_uni_position"
+"barrier_fn": "robust_barriers"
+heterogeneity: {
+  "type": "capability_set",
+  "obs_type": "full_capability_set",
+  "values": [[0.45, 0], [0.45, 0], [0, 0.25], [0, 0.25]],
+  "sample": False,
+}
+"update_frequency": 30
+
+# MODEL CONFIG
+"input_dim": 38
+"hidden_dim": 512
+"output_dim": 5
+
+# DEPLOYMENT CONFIG
+"model_weights": "qmix_rnn_predator_capture_prey_seed0_vmap1.safetensors"
+"model_file": "actor.py"
+"model_class": RNNActor
+"save_gif": True
