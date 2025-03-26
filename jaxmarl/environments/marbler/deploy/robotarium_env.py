@@ -16,9 +16,19 @@ from rps.utilities.misc import *
 
 @dataclass
 class State:
-    p_pos: jnp.ndarray
-    done: jnp.ndarray
-    step: int
+    p_pos: jnp.ndarray = None
+    done: jnp.ndarray = None
+    step: int = None
+    het_rep: jnp.ndarray = None
+
+    # pcp specific fields
+    prey_sensed: jnp.ndarray = None
+    prey_captured: jnp.ndarray = None
+
+    # material transport specific fields
+    zone1_load: int = None
+    zone2_load: int = None
+    payload: jnp.ndarray = None
 
     def replace(self, **kwargs):
         """
@@ -33,6 +43,114 @@ class State:
         for k, v in kwargs.items():
             setattr(self, k, v)
         return self
+
+class HetManager:
+    def __init__(
+            self,
+            num_agents,
+            type,
+            values=None,
+            obs_type=None,
+            sample=False,
+        ):
+        """
+        Initializes a manager for the heterogeneity representations in the environment.
+        Args:
+            num_agents: (int) number of agents
+            type: (str) type of heterogeneity representation, must be in HET_TYPES defined in constants.py
+            sample: (bool) indicates if heterogeneity representation is expected to be resampled at each environment reset
+            obs_type: (str) how the observation model represents heterogeneity, if None not represented
+        """
+        self.num_agents = num_agents
+        self.type = type
+
+        # set sampling logic, intended to be used on environment reset()
+        if type not in HET_TYPES:
+            raise ValueError(f'{type} not in supported heterogeneity types, {HET_TYPES}')
+        elif type == 'id':
+            # representation is one hot unqiue identifier
+            self.representation_set = jnp.eye(num_agents)
+            self.sample_fn = lambda x, num_agents: x
+        elif type == 'class':
+            # representation is a one hot class indentifier
+            self.representation_set = jnp.array(values)
+            if sample == True:
+                # TODO: set probabilities per class?
+                self.sample_fn = jnp.random.choice
+            else:
+                self.sample_fn = lambda x, num_agents: x
+        elif type == 'capability_set':
+            # representation is a vector of scalar capabilities, sampled from passed in set of possible agents
+            self.representation_set = jnp.array(values)
+            if sample == True:
+                # TODO: set probabilities per class?
+                self.sample_fn = jnp.random.choice
+            else:
+                self.sample_fn = lambda x, num_agents: x
+        elif type == 'capability_dist':
+            raise NotImplementedError
+
+        def _construct_full_obs(a_idx, state):
+            ego_het = state.het_rep[a_idx, :]
+            other_het = jnp.roll(state.het_rep, shift=self.num_agents - a_idx - 1, axis=0)[:self.num_agents-1, :]
+            return jnp.concatenate([ego_het.flatten(), other_het.flatten()])
+
+        # set observation logic, intended to be used in environment get_obs()
+        if obs_type is None:
+            self.obs_fn = lambda obs, state, a_idx: obs
+            self.dim_c = 0
+        elif obs_type not in HET_TYPES:
+            raise ValueError(f'{type} not in supported heterogeneity types, {HET_TYPES}')
+        elif 'id' in type:
+            # representation is one hot unqiue identifier
+            if 'full' in obs_type:
+                self.obs_fn = lambda obs, state, a_idx: jnp.concatenate([obs, _construct_full_obs(a_idx, state)])
+                self.dim_c = num_agents * num_agents
+            else:
+                self.obs_fn = lambda obs, state, a_idx: jnp.concatenate([obs, jnp.eye(num_agents)[a_idx]])
+                self.dim_c = num_agents
+        elif 'class' in type:
+            # representation is a one hot class indentifier
+            if 'full' in obs_type:
+                self.obs_fn = lambda obs, state, a_idx: jnp.concatenate([obs, _construct_full_obs(a_idx, state)])
+                self.dim_c = self.representation_set.shape[-1] * self.num_agents
+            else:
+                self.obs_fn = lambda obs, state, a_idx: jnp.concatenate([obs, state.het_rep[a_idx]])
+                self.dim_c = self.representation_set.shape[-1]
+        elif 'capability_set' in obs_type:
+            # representation is a vector of scalar capabilities, sampled from passed in set of possible agents
+            if 'full' in obs_type:
+                self.obs_fn = lambda obs, state, a_idx: jnp.concatenate([obs, _construct_full_obs(a_idx, state)])
+                self.dim_c = self.representation_set.shape[-1] * self.num_agents
+            else:
+                self.obs_fn = lambda obs, state, a_idx: jnp.concatenate([obs, state.het_rep[a_idx]])
+                self.dim_c = self.representation_set.shape[-1]
+        elif type == 'capability_dist':
+            raise NotImplementedError
+
+    def sample(self, key):
+        """
+        Sample a heterogeneity representation from the possible heterogeneity representations
+        Args:
+            key: (chex.PRNGKey) UNUSED HERE
+        Return:
+            (jnp.ndarray) sampled heterogeneity representaiton [num_agents, dim_c]
+        """
+        idxs = self.sample_fn(jnp.arange(self.representation_set.shape[0]), (self.num_agents,))
+        return self.representation_set[idxs]
+
+    def process_obs(self, obs, state, a_idx):
+        """
+        Update observation to include heterogeneity representation
+        Args:
+            obs: (Dict) original observation to be modified
+            state: (State) environment state
+            a_idx: (int) index of agent
+        
+        Returns:
+            (Dict) observations with heterogeneity information
+        """
+        return self.obs_fn(obs, state, a_idx)
 
 class Controller:
     def __init__(

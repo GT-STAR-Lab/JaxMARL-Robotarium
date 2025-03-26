@@ -1,7 +1,7 @@
 # valid for iql, vdn, qmix
 "TOTAL_TIMESTEPS": 5e6
 "NUM_ENVS": 8
-"NUM_STEPS": 81
+"NUM_STEPS": 101
 "BUFFER_SIZE": 5000
 "BUFFER_BATCH_SIZE": 32
 "HIDDEN_SIZE": 512
@@ -26,7 +26,7 @@
   "num_agents": 4,
   "num_sensing": 2,
   "num_capturing": 2,
-  "max_steps": 80,
+  "max_steps": 100,
   "action_type": "Discrete",
   "robotarium": {
     "number_of_robots": 4,
@@ -43,13 +43,13 @@
     "values": [[0.45, 0], [0.45, 0], [0, 0.25], [0, 0.25]],
     "sample": False,
   },
-  "update_frequency": 30
+  "update_frequency": 15
 }
 
 # evaluate
 "TEST_DURING_TRAINING": True
 "TEST_INTERVAL": 0.05 # as a fraction of updates, i.e. log every 5% of training process
-"TEST_NUM_STEPS": 81
+"TEST_NUM_STEPS": 101
 "TEST_NUM_ENVS": 64 # number of episodes to average over, can affect performance
 
 "LOG_AGENTS_SEPARATELY": True # iql will log indipendent agents separately

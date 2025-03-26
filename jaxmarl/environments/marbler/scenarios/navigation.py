@@ -47,13 +47,12 @@ class Navigation(RobotariumEnv):
         """
 
         # randomly generate initial poses for robots
-        key, key_a = jax.random.split(key)
         poses = generate_initial_conditions(
             2*self.num_agents,
             width=ROBOTARIUM_WIDTH,
             height=ROBOTARIUM_HEIGHT,
             spacing=0.5,
-            key=key_a
+            key=key
         )
         self.robotarium.poses = poses[:, :self.num_agents]
 
