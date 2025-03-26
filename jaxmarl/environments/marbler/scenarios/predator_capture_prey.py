@@ -44,7 +44,7 @@ class PredatorCapturePrey(RobotariumEnv):
         self.time_shaping = kwargs.get('time_shaping', -0.05)
 
         # Observation space (poses of all agents, prey locations if sensed, capabilities)
-        self.obs_dim = (3 * self.num_agents) + (3 * self.num_prey) + self.het_manager.dim_c
+        self.obs_dim = (3 * self.num_agents) + (3 * self.num_prey) + self.het_manager.dim_h
         if self.backend == 'jax':
             self.observation_spaces = {
                 i: Box(-jnp.inf, jnp.inf, (self.obs_dim,)) for i in self.agents

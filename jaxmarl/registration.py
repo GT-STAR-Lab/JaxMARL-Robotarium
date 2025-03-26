@@ -30,7 +30,8 @@ from .environments import (
     JaxNav,
     Navigation,
     PredatorCapturePrey,
-    MaterialTransport
+    MaterialTransport,
+    Warehouse
 )
 
 
@@ -124,6 +125,8 @@ def make(env_id: str, **env_kwargs):
         env = PredatorCapturePrey(**env_kwargs)
     elif env_id == "material_transport":
         env = MaterialTransport(**env_kwargs)
+    elif env_id == "warehouse":
+        env = Warehouse(**env_kwargs)
 
     return env
 
@@ -159,5 +162,6 @@ registered_envs = [
     "jaxnav",
     "navigation",
     "predator_capture_prey",
-    "material_transport"
+    "material_transport",
+    "warehouse"
 ]

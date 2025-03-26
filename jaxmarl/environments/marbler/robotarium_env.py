@@ -89,33 +89,33 @@ class HetManager:
         # set observation logic, intended to be used in environment get_obs()
         if obs_type is None:
             self.obs_fn = lambda obs, state, a_idx: obs
-            self.dim_c = 0
+            self.dim_h = 0
         elif obs_type not in HET_TYPES:
             raise ValueError(f'{type} not in supported heterogeneity types, {HET_TYPES}')
         elif 'id' in type:
             # representation is one hot unqiue identifier
             if 'full' in obs_type:
                 self.obs_fn = lambda obs, state, a_idx: jnp.concatenate([obs, _construct_full_obs(a_idx, state)])
-                self.dim_c = num_agents * num_agents
+                self.dim_h = num_agents * num_agents
             else:
                 self.obs_fn = lambda obs, state, a_idx: jnp.concatenate([obs, jnp.eye(num_agents)[a_idx]])
-                self.dim_c = num_agents
+                self.dim_h = num_agents
         elif 'class' in type:
             # representation is a one hot class indentifier
             if 'full' in obs_type:
                 self.obs_fn = lambda obs, state, a_idx: jnp.concatenate([obs, _construct_full_obs(a_idx, state)])
-                self.dim_c = self.representation_set.shape[-1] * self.num_agents
+                self.dim_h = self.representation_set.shape[-1] * self.num_agents
             else:
                 self.obs_fn = lambda obs, state, a_idx: jnp.concatenate([obs, state.het_rep[a_idx]])
-                self.dim_c = self.representation_set.shape[-1]
+                self.dim_h = self.representation_set.shape[-1]
         elif 'capability_set' in obs_type:
             # representation is a vector of scalar capabilities, sampled from passed in set of possible agents
             if 'full' in obs_type:
                 self.obs_fn = lambda obs, state, a_idx: jnp.concatenate([obs, _construct_full_obs(a_idx, state)])
-                self.dim_c = self.representation_set.shape[-1] * self.num_agents
+                self.dim_h = self.representation_set.shape[-1] * self.num_agents
             else:
                 self.obs_fn = lambda obs, state, a_idx: jnp.concatenate([obs, state.het_rep[a_idx]])
-                self.dim_c = self.representation_set.shape[-1]
+                self.dim_h = self.representation_set.shape[-1]
         elif type == 'capability_dist':
             raise NotImplementedError
     
@@ -127,7 +127,7 @@ class HetManager:
             key: (chex.PRNGKey)
 
         Return:
-            (jnp.ndarray) sampled heterogeneity representaiton [num_agents, dim_c]
+            (jnp.ndarray) sampled heterogeneity representaiton [num_agents, dim_h]
         """
         idxs = self.sample_fn(key, jnp.arange(self.representation_set.shape[0]), (self.num_agents,))
         return self.representation_set[idxs]
