@@ -28,7 +28,11 @@ from .environments import (
     Overcooked,
     CoinGame,
     JaxNav,
-    Navigation
+    Navigation,
+    PredatorCapturePrey,
+    MaterialTransport,
+    Warehouse,
+    ArcticTransport,
 )
 
 
@@ -118,6 +122,14 @@ def make(env_id: str, **env_kwargs):
     # 10. Marbler
     elif env_id == "navigation":
         env = Navigation(**env_kwargs)
+    elif env_id == "predator_capture_prey":
+        env = PredatorCapturePrey(**env_kwargs)
+    elif env_id == "material_transport":
+        env = MaterialTransport(**env_kwargs)
+    elif env_id == "warehouse":
+        env = Warehouse(**env_kwargs)
+    elif env_id == "arctic_transport":
+        env = ArcticTransport(**env_kwargs)
 
     return env
 
@@ -151,5 +163,9 @@ registered_envs = [
     "overcooked",
     "coin_game",
     "jaxnav",
-    "navigation"
+    "navigation",
+    "predator_capture_prey",
+    "material_transport",
+    "warehouse",
+    "arctic_transport",
 ]

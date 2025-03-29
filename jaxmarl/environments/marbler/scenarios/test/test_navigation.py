@@ -27,10 +27,9 @@ class TestNavigation(unittest.TestCase):
     def test_step(self):
         _, state = self.env.reset(self.key)
 
-        # positions that will lead to boundary violation
-        boundary_p_pos = jnp.array([[-1., 0, 0], [1, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]])
+        p_pos = jnp.array([[-1., 0, 0], [1, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]])
         state = state.replace(
-            p_pos = boundary_p_pos
+            p_pos = p_pos
         )
         actions = {str(f'agent_{i}'): jnp.array([1, 0.0]) for i in range(self.num_agents)}
         new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
@@ -107,7 +106,7 @@ class TestNavigation(unittest.TestCase):
         # check that the robot moved
         for i in range(self.num_agents):
             self.assertGreater(
-                jnp.sqrt(jnp.sum((final_state.p_pos.T[i][0] - initial_state.p_pos.T[i][0])**2)),
+                jnp.sqrt(jnp.sum((final_state.p_pos[i] - initial_state.p_pos[i])**2)),
                 0
             )
         

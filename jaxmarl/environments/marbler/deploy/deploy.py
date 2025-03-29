@@ -9,6 +9,7 @@ import yaml
 import importlib
 import numpy as np
 import shutil
+import re
 
 from safetensors.flax import load_file
 
@@ -35,6 +36,7 @@ def flax_to_torch(flax_state_dict, torch_state_dict):
     def _dense(param):
         return torch.from_numpy(param.T)
 
+    param_map = {}
     for name, param in flax_state_dict.items():
         param = np.array(param)
         # skip all non agent parameters
@@ -44,38 +46,75 @@ def flax_to_torch(flax_state_dict, torch_state_dict):
         if 'Dense' in name:
             if 'kernel' in name:
                 torch_state_dict[f'{name.split(",")[-2]}.weight'] = _dense(param)
+                param_map[f'{name.split(",")[-2]}.weight'] = name
             if 'bias' in name:
                 torch_state_dict[f'{name.split(",")[-2]}.bias'] = _bias(param)
+                param_map[f'{name.split(",")[-2]}.bias'] = name
 
         if 'GRUCell' in name:
             gru_param = name.split(",")[-2]
             N = param.shape[0]
-            param_id = 'ih' if 'i' in gru_param else 'hh'
-            if 'r' in gru_param:
-                if 'kernel' in name:
-                    torch_state_dict[f'{name.split(",")[-3]}.weight_{param_id}'][:N,:] = _dense(param)
-                if 'bias' in name:
-                    torch_state_dict[f'{name.split(",")[-3]}.bias_{param_id}'][:N] = _bias(param)
-            if 'z' in gru_param:
-                if 'kernel' in name:
-                    torch_state_dict[f'{name.split(",")[-3]}.weight_{param_id}'][N:2*N,:] = _dense(param)
-                if 'bias' in name:
-                    torch_state_dict[f'{name.split(",")[-3]}.bias_{param_id}'][N:2*N] = _bias(param)
-            if 'n' in gru_param:
-                if 'kernel' in name:
-                    torch_state_dict[f'{name.split(",")[-3]}.weight_{param_id}'][2*N:,:] = _dense(param)
-                if 'bias' in name:
-                    torch_state_dict[f'{name.split(",")[-3]}.bias_{param_id}'][2*N:] = _bias(param)
+            if 'ir' in gru_param or 'iz' in gru_param or 'in' in gru_param:
+                prefix = 'W'
+                gate_map = {'ir': 'r', 'iz': 'z', 'in': 'h'}
+            else:  # hr, hz, hn
+                prefix = 'U'
+                gate_map = {'hr': 'r', 'hz': 'z', 'hn': 'h'}
+            
+            gate = gate_map[gru_param]
+
+            if 'kernel' in name:
+                torch_state_dict[f'{name.split(",")[-3]}.{prefix}_{gate}'] = _dense(param).T
+                param_map[f'{name.split(",")[-3]}.{prefix}_{gate}'] = name
+            if 'bias' in name:
+                # special handling for n
+                if 'n' in gru_param:
+                    torch_state_dict[f'{name.split(",")[-3]}.b_{"i" if prefix == "W" else "h"}h'] = _bias(param)
+                    param_map[f'{name.split(",")[-3]}.b_{"i" if prefix == "W" else "h"}h'] = name
+                else:
+                    torch_state_dict[f'{name.split(",")[-3]}.b_{gate}'] = _bias(param)
+                    param_map[f'{name.split(",")[-3]}.b_{gate}'] = name
+    for key, value in param_map.items():
+        print(f'{key}: {value}')
         
     return torch_state_dict
+
+def replace_dynamic_slice_in_file(file_path):
+    """Helper function to replace usages of dynamic_slice"""
+
+    with open(file_path, "r") as f:
+        lines = f.readlines()
+
+    new_lines = []
+    pattern = re.compile(r"jax\.lax\.dynamic_slice\((.+?),\s*\((.*?)\),\s*\((.*?)\)\)")
+
+    for line in lines:
+        match = pattern.search(line)
+        if match:
+            array, starts, sizes = match.groups()
+            start_vars = starts.split(", ")
+            size_vars = sizes.split(", ")
+            
+            # Convert dynamic_slice to numpy slicing
+            slices = [f"{start}:{start}+{size}" for start, size in zip(start_vars, size_vars)]
+            numpy_slice = f"{array}[{', '.join(slices)}]"
+
+            # Replace the matched dynamic slice with NumPy slicing
+            line = pattern.sub(numpy_slice, line)
+
+        new_lines.append(line)
+
+    with open(file_path, "w") as f:
+        f.writelines(new_lines)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--name', type=str, default='experiment', help='folder to save deployment files')
+    parser.add_argument('--config', type=str, default='config.yaml', help='configuration file for deployed scenario')
     args = parser.parse_args()
 
     module_dir = os.path.dirname(__file__)
-    config_path = os.path.join(module_dir, 'config.yaml')
+    config_path = os.path.join(module_dir, args.config)
 
     # get experiment output dir
     output_dir = os.path.join(module_dir, 'robotarium_submissions', args.name)
@@ -105,10 +144,10 @@ if __name__ == "__main__":
     data = data.replace(config.model_weights, 'agent.tiff')
     data = data.replace('"save_gif": True', '"save_gif": False')
     with open(config_output_path, 'w') as file:
-            file.write(data)
+        file.write(data)
     
     # copy scenario and constants files
-    scenario_py = f'{config.scenario.lower()}.py'
+    scenario_py = config.scenario_file
     scenario_path = os.path.join(
         "/".join(module_dir.split("/")[:-1]),
         'scenarios',
@@ -116,6 +155,9 @@ if __name__ == "__main__":
     )
     scenario_output_path = os.path.join(output_dir, scenario_py)
     shutil.copy(scenario_path, scenario_output_path)
+
+    # update scenario file to not use dynamic slice
+    replace_dynamic_slice_in_file(scenario_output_path)
 
     constants_path = os.path.join(
         "/".join(module_dir.split("/")[:-1]),

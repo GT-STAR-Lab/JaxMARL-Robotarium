@@ -31,7 +31,7 @@ if __name__ == "__main__":
     jnp.random.seed(config.seed)
 
     # load scenario
-    scenario_module = importlib.import_module(f"{config.scenario.lower()}")
+    scenario_module = importlib.import_module(f"{config.scenario_file[:-3]}")
     scenario = getattr(scenario_module, config.scenario)
     env = scenario(num_agents, max_steps, **config.__dict__)
 

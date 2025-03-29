@@ -228,9 +228,9 @@ def make_train(config, env):
         # INIT ENV
         original_seed = rng[0]
         rng, _rng = jax.random.split(rng)
-        wrapped_env = CTRolloutManager(env, batch_size=config["NUM_ENVS"])
+        wrapped_env = CTRolloutManager(env, batch_size=config["NUM_ENVS"], preprocess_obs=config.get("PREPROCESS_OBS", False))
         test_env = CTRolloutManager(
-            env, batch_size=config["TEST_NUM_ENVS"]
+            env, batch_size=config["TEST_NUM_ENVS"], preprocess_obs=config.get("PREPROCESS_OBS", False)
         )  # batched env for testing (has different batch size)
 
         # to initalize some variables is necessary to sample a trajectory to know its strucutre
