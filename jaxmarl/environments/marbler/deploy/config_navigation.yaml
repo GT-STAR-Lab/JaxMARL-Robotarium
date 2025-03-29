@@ -19,7 +19,7 @@
 "output_dim": 5
 
 # DEPLOYMENT CONFIG
-"model_weights": "qmix_rnn_navigation_seed0_vmap0.safetensors"
+"model_weights": "qmix_rnn_navigation.safetensors"
 "model_file": "actor.py"
 "model_class": RNNActor
 "save_gif": True

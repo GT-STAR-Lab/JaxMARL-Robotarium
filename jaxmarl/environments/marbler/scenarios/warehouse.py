@@ -1,5 +1,5 @@
 """
-Robots collaborate to unload all material.
+Robots collaborate to complete the maximum number of deliveries.
 """
 
 # wrap import statement in try-except block to allow for correct import during deployment
@@ -328,6 +328,8 @@ class Warehouse(RobotariumEnv):
             step=0,
             het_rep = self.het_manager.sample(None),
             payload = jnp.full((self.num_agents,), 0),
+            zone1_load = 0,
+            zone2_load = 0
         )
 
         return state

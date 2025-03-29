@@ -1,5 +1,5 @@
 """
-Robots collaborate to unload all material.
+Robots collaborate to traverse arctic terrain.
 """
 
 # wrap import statement in try-except block to allow for correct import during deployment
@@ -8,28 +8,26 @@ try:
 except Exception as e:
     from robotarium_env import *
 
-class MaterialTransport(RobotariumEnv):
-    def __init__(self, num_agents, max_steps=70, **kwargs):
-        self.name = 'MARBLER_material_transport'
+class ArcticTransport(RobotariumEnv):
+    def __init__(self, num_agents, max_steps=80, **kwargs):
+        self.name = 'MARBLER_arctic_transport'
         self.backend = kwargs.get('backend', 'jax')
 
+        # Arctic transport specific constraint at the moment
+        assert(num_agents == 4), "Arctic Transport requires 4 agents"
+
         # Heterogeneity
-        self.num_sensing = kwargs.get('num_sensing', 2)
-        self.num_capturing = kwargs.get('num_capturing', 2)
         default_het_args = {
             'num_agents': num_agents,
-            'type': 'capability_set',
-            'values': [[.45, 5], [.45, 5], [.15, 15], [.15, 15]],
+            'type': 'class',
+            'values': [[1, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]],
             'obs_type': None
         }
         het_args = kwargs.get('heterogeneity', default_het_args)
         het_args['num_agents'] = num_agents
         self.het_manager = HetManager(**het_args)
 
-        # Load distribution
-        self.zone1_dist = kwargs.get('zone1_dist')
-        self.zone2_dist = kwargs.get('zone2_dist')
-
+        # Initialize backend
         if self.backend == 'jax':
             super().__init__(num_agents, max_steps, **kwargs)
         else:
@@ -39,31 +37,21 @@ class MaterialTransport(RobotariumEnv):
             super().__init__(num_agents, max_steps, **kwargs)
 
         # Reward shaping
-        self.load_shaping = kwargs.get('load_shaping', 0.25)
-        self.dropoff_shaping = kwargs.get('dropoff_shaping', 0.75)
+        self.dist_shaping = kwargs.get('dist_shaping', -0.05)
         self.violation_shaping = kwargs.get('violation_shaping', 0)
         self.time_shaping = kwargs.get('time_shaping', -0.1)
 
-        # Observation space (poses of all agents, zone loads, capabilities)
-        self.obs_dim = (3 * self.num_agents) + 2 + self.het_manager.dim_h
+        # Observation space (poses of all agents, agent_terrain type, drone observations, heterogeneity)
+        self.obs_dim = (3 * self.num_agents) + 1 + (9 * 2) + self.het_manager.dim_h
         if self.backend == 'jax':
             self.observation_spaces = {
                 i: Box(-jnp.inf, jnp.inf, (self.obs_dim,)) for i in self.agents
             }
-        
-        # Zone dimensions
-        self.dropoff_width = 0.5
-        self.zone1_pos = jnp.zeros((2,))  # center of map
-        self.zone1_radius = 0.35
-        self.zone2_width = 0.5
 
         # Visualization
         self.robot_markers = []
-        self.zone_labels = []
-        self.dropoff_marker = None
-        self.zone1_marker = None
-        self.zone2_marker = None
-    
+        self.terrain_markers = []
+
     def reset(self, key) -> Tuple[Dict, State]:
         """
         Performs resetting of the environment.
@@ -75,22 +63,31 @@ class MaterialTransport(RobotariumEnv):
             (Tuple[Dict[str, chex.Array], State]) initial observation and environment state
         """
 
-        # randomly generate initial poses for robots
-        key, key_a = jax.random.split(key)
-        poses = generate_initial_conditions(
-            self.num_agents,
-            width=ROBOTARIUM_WIDTH / 4,
-            height=ROBOTARIUM_HEIGHT,
-            spacing=0.3,
-            key=key_a
+        # starting poses are fixed
+        poses = jnp.array([
+            [-0.3, -0.8, 0.0],
+            [0.3, -0.8, 0.0],
+            [-0.9, -0.8, 0.0],
+            [0.9, -0.8, 0.0],
+        ]).T
+        self.robotarium.poses = poses[:, :self.num_agents]
+
+        # randomly generate terrain grid
+        # 0 is normal terrain
+        # 1 is ice
+        # 2 is water
+        # 3 is the goal
+        key, key_t = jax.random.split(key)
+        terrain_grid = jax.random.randint(key_t, (6, 12), 0, 3)
+        terrain_grid = jnp.concatenate(
+            [   
+                jnp.ones((1,12)) * 3, # goal
+                terrain_grid, 
+                jnp.zeros((1, 12)) # start
+            ],
+            axis=0
         )
-        self.robotarium.poses = poses
-
-        # get load per zone
-        key, key_z1, key_z2 = jax.random.split(key, 3)
-        zone1_load = self.zone1_dist['mu'] + self.zone1_dist['sigma'] * jax.random.normal(key_z1, (1,))
-        zone2_load = self.zone2_dist['mu'] + self.zone2_dist['sigma'] * jax.random.normal(key_z2, (1,))
-
+        
         # set velocities to 0
         self.robotarium.set_velocities(jnp.arange(self.num_agents), jnp.zeros((2, self.num_agents)))
 
@@ -99,10 +96,8 @@ class MaterialTransport(RobotariumEnv):
             p_pos=poses.T,
             done=jnp.full((self.num_agents), False),
             step=0,
-            het_rep = self.het_manager.sample(key_het),
-            zone1_load = zone1_load,
-            zone2_load = zone2_load,
-            payload = jnp.full((self.num_agents,), 0)
+            het_rep=self.het_manager.sample(key_het),
+            grid=terrain_grid,
         )
 
         return self.get_obs(state), state
@@ -145,35 +140,6 @@ class MaterialTransport(RobotariumEnv):
         # get reward
         reward = self.rewards(state)
 
-        # update zone 1 load
-        zone1_dist = jnp.linalg.norm(state.p_pos[:, :2] - self.zone1_pos, axis=-1)
-        zone1_dist_mask = zone1_dist < self.zone1_radius    # agents in range
-        zone1_load_mask = jnp.bitwise_and(jnp.bitwise_and(state.payload == 0, state.zone1_load > 0), zone1_dist_mask)  # agents loading
-        zone1_agent_capacity = jnp.sum(jnp.where(zone1_load_mask, state.het_rep[:, 1], 0))  # total capacity of agents loading
-        zone1_load = jnp.clip(state.zone1_load - zone1_agent_capacity, 0, jnp.inf)
-        state = state.replace(
-            zone1_load = zone1_load,
-            payload = jnp.logical_or(state.payload, zone1_load_mask)*1
-        )
-
-        # update zone 2 load
-        bounds = self.robotarium.boundaries # lower left point / width/ height
-        zone2_dist_mask = state.p_pos[:, 0] > (bounds[0] + bounds[2] - self.zone2_width)
-        zone2_load_mask = jnp.bitwise_and(jnp.bitwise_and(state.payload == 0, state.zone2_load > 0), zone2_dist_mask)
-        zone2_agent_capacity = jnp.sum(jnp.where(zone2_load_mask, state.het_rep[:, 1], 0))
-        zone2_load = jnp.clip(state.zone2_load - zone2_agent_capacity, 0, jnp.inf)
-        state = state.replace(
-            zone2_load = zone2_load,
-            payload = jnp.logical_or(state.payload, zone2_load_mask)*1
-        )
-
-        # update dropoff zone
-        dropoff_dist_mask = state.p_pos[:, 0] < (bounds[0] + self.dropoff_width)
-        dropoff_mask = jnp.bitwise_and(state.payload > 0, dropoff_dist_mask)
-        state = state.replace(
-            payload = jnp.where(dropoff_mask, 0, state.payload)
-        )
-        
         obs = self.get_obs(state)
 
         # set dones
@@ -183,21 +149,36 @@ class MaterialTransport(RobotariumEnv):
             step=state.step + 1,
         )
 
-        # check if all material has been unloaded
-        all_unloaded = jnp.logical_and((state.zone1_load + state.zone2_load) == 0, jnp.all(state.payload == 0))
+        # check if all agents on goal
+        bounds = jnp.array(self.robotarium.boundaries)
+        all_reached = jnp.all(state.p_pos[2:self.num_agents, 1] > (bounds[3] / 8)*3)
 
         info = {
             'collision': jnp.full((self.num_agents,), violations['collision']),
             'boundary': jnp.full((self.num_agents,), violations['boundary']),
-            'success_rate': jnp.full((self.num_agents,), all_unloaded),
-            'material_remaining': jnp.full((self.num_agents,), state.zone1_load + state.zone2_load),
+            'success_rate': jnp.full((self.num_agents,), all_reached),
         }
 
         dones = {a: done[i] for i, a in enumerate(self.agents)}
         dones.update({"__all__": jnp.all(done)})
 
         return obs, state, reward, dones, info
+    
+    def _cell_from_pos(self, pos):
+        """
+        Convert a position to a cell index
 
+        Args:
+            pos: (chex.Array) position
+        Returns:
+            (chex.Array) cell index
+        """
+
+        cell_y = jnp.clip(-(pos[1] - 1) / .25, 0, 7)
+        cell_x = jnp.clip((pos[0] + 1.5) / .25, 0, 11)
+        
+        return jnp.array([cell_y, cell_x], dtype=jnp.int32)
+    
     def _decode_discrete_action(self, a_idx: int, action: int, state: State):
         """
         Decode action index into null, up, down, left, right actions
@@ -211,14 +192,27 @@ class MaterialTransport(RobotariumEnv):
             (chex.Array) desired (x,y) position
         """
         goals = jnp.array([[0, 0], [0, 1], [0, -1], [1, 0], [-1, 0]])
-        candidate_goals = state.p_pos[a_idx,:2] + (goals[action] * state.het_rep[a_idx, 0])
+
+        # get terrain and agent type
+        terrain_type = state.grid[
+            self._cell_from_pos(state.p_pos[a_idx, :2])[0],
+            self._cell_from_pos(state.p_pos[a_idx, :2])[1]
+        ]
+        agent_type = jnp.argmax(state.het_rep[a_idx])
+
+        # set step size
+        step = jnp.where(agent_type == terrain_type, 0.1, 0.01)
+        step = jnp.where(jnp.logical_and(agent_type != 0, terrain_type % 3 == 0), 0.075, step)
+        step = jnp.where(agent_type == 0, 0.2, step)
+
+        candidate_goals = state.p_pos[a_idx,:2] + (goals[action] * step)
 
         # ensure goals are in bound
         b = jnp.array(self.robotarium.boundaries)
         in_goals = jnp.clip(candidate_goals, b[:2] + 0.1, b[:2] + b[2:] - 0.1)
 
         return in_goals
-
+    
     def _decode_continuous_action(self, a_idx: int, action, state: State):
         """
         Trivially returns actions, assumes directly setting v and omega
@@ -231,11 +225,20 @@ class MaterialTransport(RobotariumEnv):
         Returns:
             (chex.Array) action
         """
-        return action * state.het_rep[a_idx, 0]
+        # get terrain and agent type
+        terrain_type = state.grid[self._cell_from_pos(state.p_pos[a_idx, :2])]
+        agent_type = jnp.argmax(state.het_rep[a_idx])
 
+        # set step size
+        step = jnp.where(agent_type == terrain_type, 0.1, 0.01)
+        step = jnp.where(jnp.logical_and(agent_type != 0, terrain_type % 3 == 0), 0.075, step)
+        step = jnp.where(agent_type == 0, 0.2, step)
+
+        return action * step
+    
     def rewards(self, state: State) -> Dict[str, float]:
         """
-        Assigns rewards, (shaping reward for loading + shaping reward for unloading + violation penalty).
+        Assigns rewards, (shaping reward for sensing + shaping reward for capture + violation penalty).
         
         Args:
             state: (State) environment state
@@ -244,26 +247,16 @@ class MaterialTransport(RobotariumEnv):
             (Dict[str, float]) agent rewards
         """
 
-        # update zone 1 load
-        zone1_dist = jnp.linalg.norm(state.p_pos[:, :2] - self.zone1_pos, axis=-1)
-        zone1_dist_mask = zone1_dist < self.zone1_radius    # agents in range
-        zone1_load_mask = jnp.logical_and(jnp.logical_and(state.payload == 0, state.zone1_load > 0), zone1_dist_mask)  # agents loading
-        zone1_loaded = jnp.sum(zone1_load_mask*1)
+        # check non-drone distance from goal
+        bounds = jnp.array(self.robotarium.boundaries)
+        dist_rew =  jnp.sum(state.p_pos[2:self.num_agents, 1] - (bounds[3] / 8)*3)
+        dist_rew = jnp.where(dist_rew > 0, 0, -dist_rew)
 
-        # update zone 2 load
-        bounds = self.robotarium.boundaries # lower left point / width/ height
-        zone2_dist_mask = state.p_pos[:, 0] > (bounds[0] + bounds[2] - self.zone2_width)
-        zone2_load_mask = jnp.logical_and(jnp.logical_and(state.payload == 0, state.zone2_load > 0), zone2_dist_mask)
-        zone2_loaded = jnp.sum(zone2_load_mask*1)
+        # check for all agents on goal
+        all_reached = jnp.all(state.p_pos[2:self.num_agents, 1] > (bounds[3] / 8)*3)
 
-        # update dropoff zone
-        dropoff_dist_mask = state.p_pos[:, 0] < (bounds[0] + self.dropoff_width)
-        dropoff_mask = jnp.logical_and(state.payload > 0, dropoff_dist_mask)
-        dropped_off = jnp.sum(dropoff_mask*1)
-
-        # check if all material unloaded
-        all_unloaded = jnp.logical_and((state.zone1_load + state.zone2_load) == 0, jnp.all(state.payload == 0))
-        material_remaining = jnp.sum(jnp.where(all_unloaded, 0, 1))
+        # compute task reward
+        rew = (dist_rew * self.dist_shaping) + (all_reached * self.time_shaping)
 
         # global penalty for collisions and boundary violation
         violations = self._get_violations(state)
@@ -271,15 +264,11 @@ class MaterialTransport(RobotariumEnv):
         boundaries = violations['boundary']
         violation_rew = self.violation_shaping * (collisions + boundaries)
 
-        rew = (zone1_loaded + zone2_loaded) * self.load_shaping \
-            + dropped_off * self.dropoff_shaping \
-            + material_remaining * self.time_shaping \
-        
         return {agent: jnp.where(violation_rew == 0, rew, violation_rew) for _, agent in enumerate(self.agents)}
-    
+
     def get_obs(self, state: State) -> Dict:
         """
-        Get observation (ego_pos, other_pos, zone loads, het_rep)
+        Get observation (ego_pos, other_pos, prey_pos, het_rep)
 
         Args:
             state: (State) environment state
@@ -288,6 +277,19 @@ class MaterialTransport(RobotariumEnv):
             (Dict[str, float]) agent observations
         """
 
+        agent_cell_types = jnp.array([
+            state.grid[self._cell_from_pos(state.p_pos[i, :2])[0], self._cell_from_pos(state.p_pos[i, :2])[1]] \
+            for i in range(self.num_agents)
+        ])
+
+        # get drone observations
+        padded_grid = jnp.pad(state.grid, ((1, 1), (1, 1)), mode='constant', constant_values=-1)
+        drone1_cell = self._cell_from_pos(state.p_pos[0, :2])
+        x_min, y_min = drone1_cell[0], drone1_cell[1]
+        drone1_obs = jax.lax.dynamic_slice(padded_grid, (x_min, y_min), (3, 3))  # get drone1 observation
+        drone2_cell = self._cell_from_pos(state.p_pos[1, :2])
+        x_min, y_min = drone2_cell[0], drone2_cell[1]
+        drone2_obs = jax.lax.dynamic_slice(padded_grid, (x_min, y_min), (3, 3))  # get drone2 observation
         def _obs(aidx: int):
             """Helper function to create agent observation"""
             
@@ -308,11 +310,11 @@ class MaterialTransport(RobotariumEnv):
 
             obs = jnp.concatenate([
                 ego_pos.flatten(),  # 3
+                agent_cell_types[aidx].reshape(1,),  # 1
                 other_pos.flatten(),  # num_agents-1, 3
-                state.zone1_load,
-                state.zone2_load
+                drone1_obs.flatten(),  # 3, 3
+                drone2_obs.flatten(),  # 3, 3
             ])
-
             return obs
 
         return {a: self.het_manager.process_obs(_obs(i), state, i) for i, a in enumerate(self.agents)}
@@ -320,7 +322,7 @@ class MaterialTransport(RobotariumEnv):
     #-----------------------------------------
     # Visualization Specific Functions (NOT INTENDED TO BE JITTED)
     #-----------------------------------------
-    
+
     def render_frame(self, state: State):
         """
         Updates visualizer figure to include goal position markers
@@ -332,60 +334,46 @@ class MaterialTransport(RobotariumEnv):
         # reset markers if at first step
         if state.step == 1:
             self.robot_markers = []
-            self.zone_labels = []
-            self.dropoff_marker = None
-            self.zone1_marker = None
-            self.zone2_marker = None
+            self.terrain_markers = []
         
-        # add markers for robots, wider is larger load
-        poses = state.p_pos
+        # add markers for robots
+        poses = state.p_pos[:self.num_agents, :2]
+        robot_colors = ['black', 'black', 'blue', 'cyan']
+        terrain_colors = ['white', 'blue', 'cyan', 'green']
         if not self.robot_markers:
-            # green for sensing
             self.robot_markers = [
                 self.visualizer.axes.scatter(
                     jnp.array(poses[i, 0]),
                     jnp.array(poses[i, 1]),
                     marker='o',
-                    s=self.determine_marker_size(state.het_rep[i, 1] * 0.02),
+                    s=self.determine_marker_size(0.15),
                     facecolors='none',
-                    edgecolors='black',
+                    edgecolors=robot_colors[i],
                     linewidth=1
                 ) for i in range(self.num_agents)
             ]
         
-        # add zones
-        if not self.dropoff_marker:
-            self.dropoff_marker = self.visualizer.axes.add_patch(
-                patches.Rectangle([-1.5, -1], self.dropoff_width, 2, color='purple', zorder=-2)
-            )
-        if not self.zone1_marker:
-            self.zone1_marker = self.visualizer.axes.scatter(
-                    0, 0, s=self.determine_marker_size(self.zone1_radius),
-                    marker='o', facecolors='none', edgecolors='orange', linewidth=1, zorder=-2
-            )
-        if not self.zone2_marker:
-            self.zone2_marker = self.visualizer.axes.add_patch(
-                patches.Rectangle([1.5 - self.zone2_width, -1], self.zone2_width , 2, color='blue', zorder=-2)
-            )
-
-        # add labels
-        if not self.zone_labels:
-            self.zone_labels.append(
-                self.visualizer.axes.text(0, 0, jnp.round(state.zone1_load, 2), verticalalignment='center', horizontalalignment='center')
-            )
-            self.zone_labels.append(
-                self.visualizer.axes.text(1.5 - self.zone2_width/2, 0, jnp.round(state.zone2_load, 2), verticalalignment='center', horizontalalignment='center')
-            )
-
+        if not self.terrain_markers:
+            for i in range(8):
+                for j in range(12):
+                    terrain_type = state.grid[i, j]
+                    color = terrain_colors[int(terrain_type)]
+                    self.terrain_markers.append(
+                        self.visualizer.axes.add_patch(
+                            patches.Rectangle(
+                                (j*0.25-1.5, (-i*0.25)+0.75),
+                                0.25,
+                                0.25,
+                                color=color,
+                                alpha=0.5,
+                                zorder=-1
+                            )
+                        )
+                    )
         
         # update robot marker positions
         for i in range(self.num_agents):
             self.robot_markers[i].set_offsets(poses[i, :2])
-            self.robot_markers[i].set_edgecolor('green' if state.payload[i] else 'black')
-        
-        # update labels
-        self.zone_labels[0].set_text(jnp.round(state.zone1_load, 2))
-        self.zone_labels[1].set_text(jnp.round(state.zone2_load, 2))
 
 
     #-----------------------------------------
@@ -402,25 +390,30 @@ class MaterialTransport(RobotariumEnv):
             (jnp.ndarray) initial poses (3xN) for robots
         """
 
-        # randomly generate initial poses for robots
-        poses = generate_initial_conditions(
-            self.num_agents,
-            width=ROBOTARIUM_WIDTH / 4,
-            height=ROBOTARIUM_HEIGHT,
-            spacing=0.3,
-        )
+        # starting poses are fixed
+        poses = jnp.array([
+            [-0.3, -0.8, 0.0],
+            [0.3, -0.8, 0.0],
+            [-0.9, -0.8, 0.0],
+            [0.9, -0.8, 0.0],
+        ])
 
-        zone1_load = self.zone1_dist['mu'] + self.zone1_dist['sigma'] * jnp.random.normal(size=(1,))
-        zone2_load = self.zone2_dist['mu'] + self.zone2_dist['sigma'] * jnp.random.normal(size=(1,))
+        terrain_grid = jnp.random.randint(0, 4, size=(6,12))
+        terrain_grid = jnp.concatenate(
+            [   
+                jnp.ones((1,12)) * 3, # goal
+                terrain_grid, 
+                jnp.zeros((1, 12)) # start
+            ],
+            axis=0
+        )
 
         state = State(
             p_pos=poses.T,
             done=jnp.full((self.num_agents), False),
             step=0,
             het_rep = self.het_manager.sample(None),
-            zone1_load = zone1_load,
-            zone2_load = zone2_load,
-            payload = jnp.full((self.num_agents,), 0)
+            grid = terrain_grid
         )
 
         return state

@@ -27,7 +27,7 @@ heterogeneity: {
 "output_dim": 5
 
 # DEPLOYMENT CONFIG
-"model_weights": "qmix_rnn_predator_capture_prey_seed0_vmap1.safetensors"
+"model_weights": "qmix_rnn_predator_capture.safetensors"
 "model_file": "actor.py"
 "model_class": RNNActor
 "save_gif": True

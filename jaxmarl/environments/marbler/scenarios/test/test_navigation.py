@@ -106,7 +106,7 @@ class TestNavigation(unittest.TestCase):
         # check that the robot moved
         for i in range(self.num_agents):
             self.assertGreater(
-                jnp.sqrt(jnp.sum((final_state.p_pos.T[i][0] - initial_state.p_pos.T[i][0])**2)),
+                jnp.sqrt(jnp.sum((final_state.p_pos[i] - initial_state.p_pos[i])**2)),
                 0
             )
         

@@ -104,13 +104,13 @@ class TestPredatorCapturePrey(unittest.TestCase):
         # agent 0
         expected_obs = jnp.array([-0.5, 0, 0, 0.5, 0, 0, -0.5, 0, 0, -5, -5, -5])
         self.assertTrue(
-            jnp.array_equal(obs['agent_0'][:-self.env.het_manager.dim_c], expected_obs)
+            jnp.array_equal(obs['agent_0'][:-self.env.het_manager.dim_h], expected_obs)
         )
 
         # agent 0
         expected_obs = jnp.array([0.5, 0, 0, -0.5, 0, 0, -0.5, 0, 0, -5, -5, -5])
         self.assertTrue(
-            jnp.array_equal(obs['agent_1'][:-self.env.het_manager.dim_c], expected_obs)
+            jnp.array_equal(obs['agent_1'][:-self.env.het_manager.dim_h], expected_obs)
         )
     
     def test_initialize_robotarium_state(self):
@@ -160,7 +160,7 @@ class TestPredatorCapturePrey(unittest.TestCase):
         # check that the robot moved
         for i in range(self.num_agents):
             self.assertGreater(
-                jnp.sqrt(jnp.sum((final_state.p_pos.T[i][0] - initial_state.p_pos.T[i][0])**2)),
+                jnp.sqrt(jnp.sum((final_state.p_pos[i] - initial_state.p_pos[i])**2)),
                 0
             )
         

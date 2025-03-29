@@ -1,5 +1,5 @@
 # valid for iql, vdn, qmix
-"TOTAL_TIMESTEPS": 5e6
+"TOTAL_TIMESTEPS": 3e6
 "NUM_ENVS": 8
 "NUM_STEPS": 71
 "BUFFER_SIZE": 5000
@@ -21,7 +21,7 @@
 "GAMMA": 0.9
 
 # ENV
-"ENV_NAME": "material_transport"
+"ENV_NAME": "arctic_transport"
 "ENV_KWARGS": {
   "num_agents": 4,
   "max_steps": 70,
@@ -36,21 +36,12 @@
     "barrier_fn": "robust_barriers",
   },
   "heterogeneity": {
-      "type": "capability_set",
-      "obs_type": "full_capability_set",
-      "values": [[.45, 5], [.45, 5], [.15, 15], [.15, 15]],
+      "type": "class",
+      "obs_type": "class",
+      "values": [[1, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]],
       "sample": False,
   },
-  "zone1_dist": {
-      "mu": 75,
-      "sigma": 10,
-  },
-  "zone2_dist": {
-      "mu": 15,
-      "sigma": 4,
-  },
-  "step_dist": 1,
-  "update_frequency": 60
+  "update_frequency": 30
 }
 
 # evaluate

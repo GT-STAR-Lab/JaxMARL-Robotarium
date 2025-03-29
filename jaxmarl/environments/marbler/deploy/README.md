@@ -43,7 +43,7 @@
     "model_file": # path to actor file
     "model_class": # name of pytorch actor class to import
     ```
-2. Run `python deploy.py --name <experiment_name>` in this directory to generate the folder containing all files necessary for deployment at `robotarium_submissions/<experiment_name>`
+2. Run `python deploy.py --name <experiment_name> --config <config.yaml>` in this directory to generate the folder containing all files necessary for deployment at `robotarium_submissions/<experiment_name>` using configuration in `config.yaml`
 3. Upload files to [Robotarium](https://www.robotarium.gatech.edu/)
     * Create new experiment
     * Set number of robots to match your config file

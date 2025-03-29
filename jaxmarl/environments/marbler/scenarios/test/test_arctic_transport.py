@@ -3,17 +3,17 @@ import jax
 import jax.numpy as jnp
 
 from jaxmarl.environments.marbler.robotarium_env import State
-from jaxmarl.environments.marbler.scenarios.warehouse import Warehouse
+from jaxmarl.environments.marbler.scenarios.arctic_transport import ArcticTransport
 
 VISUALIZE = False
 
-class TestWarehouse(unittest.TestCase):
-    """unit tests for test_warehous.py"""
+class TestArcticTransport(unittest.TestCase):
+    """unit tests for arctic_transport.py"""
 
     def setUp(self):
-        self.num_agents = 2
+        self.num_agents = 4
         self.batch_size = 10
-        self.env = Warehouse(
+        self.env = ArcticTransport(
             num_agents=self.num_agents,
             action_type="Discrete",
             max_steps=70,
@@ -22,7 +22,7 @@ class TestWarehouse(unittest.TestCase):
             heterogeneity={
                 'type': 'class',
                 'obs_type': 'class',
-                'values': [[1, 0], [0, 1]],
+                'values': [[1, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]],
                 'sample': False
             },
         )
@@ -32,50 +32,58 @@ class TestWarehouse(unittest.TestCase):
         obs, state = self.env.reset(self.key)
         for agent, agent_obs in obs.items():
             self.assertTrue(agent_obs.shape == (self.env.obs_dim,))
-        
+
+        self.assertTrue(state.grid.shape == (8, 12))
         self.assertTrue(~jnp.all(state.done))
-        self.assertTrue(~jnp.all(state.payload))
-        self.assertTrue(state.zone1_load == 0)
-        self.assertTrue(state.zone2_load == 0)
         self.assertTrue(state.p_pos.shape == (self.num_agents, 3))
         self.assertTrue(state.step == 0)
     
     def test_step(self):
         _, state = self.env.reset(self.key)
-        p_pos = jnp.array([[1.25, -0.5, 0], [-1.25, -0.5, 0]])
-        state = state.replace(
-            p_pos = p_pos,
-            payload = jnp.array([0, 1])
-        )
-        actions = {str(f'agent_{i}'): jnp.array([0]) for i in range(self.num_agents)}
-        new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
-
-        # check number delivered updates for red zone and payloads update
-        self.assertTrue(jnp.array_equal(new_state.payload, jnp.array([1, 0])))
-        self.assertAlmostEqual(new_state.zone1_load - state.zone1_load, 0)
-        self.assertAlmostEqual(new_state.zone2_load - state.zone2_load, 1)
-
-        state = new_state
         actions = {str(f'agent_{i}'): jnp.array([0]) for i in range(self.num_agents)}
         new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
 
         for i in range(self.num_agents):
             self.assertFalse(dones[f'agent_{i}'])
+
+        state = new_state
+        state = state.replace(
+            p_pos = jnp.array([[1.25, 0.8, 0], [-1.25, 0.8, 0], [0.5, 0.8, 0], [-0.5, 0.8, 0]]),
+        )
+        actions = {str(f'agent_{i}'): jnp.array([0]) for i in range(self.num_agents)}
+        new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
+        for i in range(self.num_agents):
+            self.assertTrue(infos['success_rate'][i] == 1)
+    
+    def test_decode_discrete_action(self):
+        _, state = self.env.reset(self.key)
+        grid = jnp.concatenate([jnp.ones((8, 6))*2, jnp.ones((8, 6))], axis=-1)
+
+        # place agents on suboptimal cells
+        state = state.replace(
+            p_pos = jnp.array([[1.25, 0.8, 0], [-1.25, 0.8, 0], [-0.5, 0, 0], [0.5, 0, 0]]),
+            grid = grid,
+        )
+        actions = {str(f'agent_{i}'): self.env._decode_discrete_action(i, 1, state) for i in range(self.num_agents)}
+
+        # check that action for agents 2 and 3 is suboptimal
+        self.assertTrue(jnp.array_equal(actions['agent_2'][1], 0.01))
+        self.assertTrue(jnp.array_equal(actions['agent_3'][1], 0.01))
         
     def test_reward(self):
         _, state = self.env.reset(self.key)
-        p_pos = jnp.array([[1.25, -0.5, 0], [-1.25, -0.5, 0]])
         state = state.replace(
-            p_pos = p_pos,
-            payload = jnp.array([0, 1])
+            p_pos = jnp.array([[1.25, 0.8, 0], [-1.25, 0.8, 0], [0.5, -0.8, 0], [-0.5, -0.8, 0]]),
         )
         actions = {str(f'agent_{i}'): jnp.array([0]) for i in range(self.num_agents)}
         new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
 
-        self.assertEqual(rewards['agent_0'], self.env.load_shaping+self.env.dropoff_shaping)
-        self.assertEqual(rewards['agent_1'], self.env.load_shaping+self.env.dropoff_shaping)
+        self.assertTrue(rewards['agent_0'] < self.env.dist_shaping)
 
         state = new_state
+        state = state.replace(
+            p_pos = jnp.array([[1.25, 0.8, 0], [-1.25, 0.8, 0], [0.5, 0.8, 0], [-0.5, 0.8, 0]]),
+        )
         actions = {str(f'agent_{i}'): jnp.array([0]) for i in range(self.num_agents)}
         new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
 
@@ -84,34 +92,24 @@ class TestWarehouse(unittest.TestCase):
     
     def test_get_obs(self):
         _, state = self.env.reset(self.key)
-        p_pos = jnp.array([[1.25, 0.5, 0], [-1.25, 0.5, 0]])
         state = state.replace(
-            p_pos = p_pos,
-            payload = jnp.array([0, 1])
+            grid = jnp.arange(8*12).reshape(8, 12), # unique grid values for testing
         )
         obs = self.env.get_obs(state)
+
+        drone1_obs = jnp.array([75, 76, 77, 87, 88, 89, -1, -1, -1])
+        drone2_obs = jnp.array([78, 79, 80, 90, 91, 92, -1, -1, -1])
         
-        # agent 0
-        expected_obs = jnp.array([1.25, 0.5, 0, -1.25, 0.5, 0])
+        # check drone obs are loaded correctly
         self.assertTrue(
-            jnp.array_equal(obs['agent_0'][:-self.env.het_manager.dim_h], expected_obs)
+            jnp.array_equal(obs['agent_0'][-(self.env.het_manager.dim_h+18):-(self.env.het_manager.dim_h+9)], drone1_obs)
+        )
+        self.assertTrue(
+            jnp.array_equal(obs['agent_0'][-(self.env.het_manager.dim_h+9):-(self.env.het_manager.dim_h)], drone2_obs)
         )
 
-        # agent 0
-        expected_obs = jnp.array([-1.25, 0.5, 0, 1.25, 0.5, 0])
-        self.assertTrue(
-            jnp.array_equal(obs['agent_1'][:-self.env.het_manager.dim_h], expected_obs)
-        )
-    
-    def test_initialize_robotarium_state(self):
-        state = self.env.initialize_robotarium_state(self.key)
-        self.assertTrue(~jnp.all(state.done))
-        self.assertTrue(~jnp.all(state.payload))
-        self.assertTrue(state.p_pos.shape == (self.num_agents, 3))
-        self.assertTrue(state.step == 0)
-    
     def test_batched_rollout(self):
-        self.env = Warehouse(
+        self.env = ArcticTransport(
             num_agents=self.num_agents,
             action_type="Discrete",
             max_steps=70,
@@ -120,7 +118,7 @@ class TestWarehouse(unittest.TestCase):
             heterogeneity={
                 'type': 'class',
                 'obs_type': 'class',
-                'values': [[1, 0], [0, 1]],
+                'values': [[1, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]],
                 'sample': False
             },
             controller = {
@@ -131,10 +129,6 @@ class TestWarehouse(unittest.TestCase):
         keys = jax.random.split(self.key, self.batch_size)
         _, state = jax.vmap(self.env.reset, in_axes=0)(keys)
         initial_state = state
-        payload = jnp.full((self.batch_size, self.num_agents), 1)
-        state = state.replace(
-            payload = payload
-        )
 
         def get_action(state):
             return {str(f'agent_{i}'): jnp.array([3]) for i in range(self.num_agents)}
@@ -151,7 +145,7 @@ class TestWarehouse(unittest.TestCase):
         # check that the robot moved
         for i in range(self.num_agents):
             self.assertGreater(
-                jnp.sqrt(jnp.sum((final_state.p_pos[i] - initial_state.p_pos[0])**2)),
+                jnp.sqrt(jnp.sum((final_state.p_pos[i] - initial_state.p_pos[i])**2)),
                 0
             )
         
@@ -166,7 +160,7 @@ class TestWarehouse(unittest.TestCase):
             render_batch = render_batch.replace(**fields)
             frames = self.env.render(render_batch, seed_index=0, env_index=0)
             frames[0].save(
-                'jaxmarl/environments/marbler/scenarios/test/warehouse.gif',
+                'jaxmarl/environments/marbler/scenarios/test/arctic_transport.gif',
                 save_all=True,
                 append_images=frames[1:],
                 duration=100,

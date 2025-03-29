@@ -9,6 +9,7 @@ import yaml
 import importlib
 import numpy as np
 import shutil
+import re
 
 from safetensors.flax import load_file
 
@@ -78,6 +79,34 @@ def flax_to_torch(flax_state_dict, torch_state_dict):
         
     return torch_state_dict
 
+def replace_dynamic_slice_in_file(file_path):
+    """Helper function to replace usages of dynamic_slice"""
+
+    with open(file_path, "r") as f:
+        lines = f.readlines()
+
+    new_lines = []
+    pattern = re.compile(r"jax\.lax\.dynamic_slice\((.+?),\s*\((.*?)\),\s*\((.*?)\)\)")
+
+    for line in lines:
+        match = pattern.search(line)
+        if match:
+            array, starts, sizes = match.groups()
+            start_vars = starts.split(", ")
+            size_vars = sizes.split(", ")
+            
+            # Convert dynamic_slice to numpy slicing
+            slices = [f"{start}:{start}+{size}" for start, size in zip(start_vars, size_vars)]
+            numpy_slice = f"{array}[{', '.join(slices)}]"
+
+            # Replace the matched dynamic slice with NumPy slicing
+            line = pattern.sub(numpy_slice, line)
+
+        new_lines.append(line)
+
+    with open(file_path, "w") as f:
+        f.writelines(new_lines)
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--name', type=str, default='experiment', help='folder to save deployment files')
@@ -115,7 +144,7 @@ if __name__ == "__main__":
     data = data.replace(config.model_weights, 'agent.tiff')
     data = data.replace('"save_gif": True', '"save_gif": False')
     with open(config_output_path, 'w') as file:
-            file.write(data)
+        file.write(data)
     
     # copy scenario and constants files
     scenario_py = config.scenario_file
@@ -126,6 +155,9 @@ if __name__ == "__main__":
     )
     scenario_output_path = os.path.join(output_dir, scenario_py)
     shutil.copy(scenario_path, scenario_output_path)
+
+    # update scenario file to not use dynamic slice
+    replace_dynamic_slice_in_file(scenario_output_path)
 
     constants_path = os.path.join(
         "/".join(module_dir.split("/")[:-1]),

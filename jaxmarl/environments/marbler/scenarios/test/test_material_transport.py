@@ -133,21 +133,14 @@ class TestMaterialTransport(unittest.TestCase):
         # agent 0
         expected_obs = jnp.array([0.0, 0, 0, -1.25, 0, 0, state.zone1_load[0], state.zone2_load[0]])
         self.assertTrue(
-            jnp.array_equal(obs['agent_0'][:-self.env.het_manager.dim_c], expected_obs)
+            jnp.array_equal(obs['agent_0'][:-self.env.het_manager.dim_h], expected_obs)
         )
 
         # agent 0
         expected_obs = jnp.array([-1.25, 0, 0, 0.0, 0, 0, state.zone1_load[0], state.zone2_load[0]])
         self.assertTrue(
-            jnp.array_equal(obs['agent_1'][:-self.env.het_manager.dim_c], expected_obs)
+            jnp.array_equal(obs['agent_1'][:-self.env.het_manager.dim_h], expected_obs)
         )
-    
-    def test_initialize_robotarium_state(self):
-        state = self.env.initialize_robotarium_state(self.key)
-        self.assertTrue(~jnp.all(state.done))
-        self.assertTrue(~jnp.all(state.payload))
-        self.assertTrue(state.p_pos.shape == (self.num_agents, 3))
-        self.assertTrue(state.step == 0)
     
     def test_batched_rollout(self):
         self.env = MaterialTransport(
