@@ -14,7 +14,7 @@ class Foraging(RobotariumEnv):
         self.name = 'MARBLER_foraging'
         self.backend = kwargs.get('backend', 'jax')
 
-        self.forage_radius = 0.25
+        self.forage_radius = 0.3
         self.num_resources = kwargs.get('num_resources', 2)
 
         # Heterogeneity
@@ -311,9 +311,10 @@ class Foraging(RobotariumEnv):
             self.labels.extend(
                 [
                     self.visualizer.axes.text(
-                    resource[i, 0] + 0.05, resource[i, 1] + 0.05, state.payload[i],
-                    verticalalignment='center', horizontalalignment='center')
-                ] for i in range(self.num_resources)
+                        resource[i, 0] + 0.05, resource[i, 1] + 0.05, state.payload[i],
+                        verticalalignment='center', horizontalalignment='center'
+                    ) for i in range(self.num_resources)
+                ]
             )
         
         
@@ -323,10 +324,10 @@ class Foraging(RobotariumEnv):
             self.labels[i].set_position(agents[i]+0.2)
         
         # update resource markers
-        for i in range(self.num_prey):
+        for i in range(self.num_resources):
             if state.payload[i] < 0:
-                self.prey_markers[i].set_sizes([0, 0])
-                self.labels[i+self.num_agents].set_text(0)
+                self.resource_markers[i].set_sizes([0, 0])
+                self.labels[i+self.num_agents].set_text(None)
 
 
     #-----------------------------------------
