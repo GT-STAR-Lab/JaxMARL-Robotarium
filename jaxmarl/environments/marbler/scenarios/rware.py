@@ -38,7 +38,7 @@ class RWARE(RobotariumEnv):
             }
         
         # Zone dimensions
-        self.zone_width = 0.5
+        self.zone_width = 0.25
         
         # Visualization
         self.robot_markers = []
@@ -166,16 +166,18 @@ class RWARE(RobotariumEnv):
         # handle shelf dropoff
         #----------------------------------------------------------
         bounds = self.robotarium.boundaries
-        in_dropoff = jnp.logical_and((poses[:, 0] > (bounds[2] - self.zone_width)), (state.payload >= 0))
+        in_dropoff = jnp.logical_and((agent_pos[:, 0] > (bounds[0] + bounds[2] - self.zone_width)), (state.payload >= 0))
         payload_requested = jnp.isin(state.payload, state.request)
 
         # get indices of shelves in dropoff zone that are being dropped off
         in_dropoff = jnp.where(in_dropoff, 1, -1)
         payload_requested = jnp.where(payload_requested, 1, -1)
-        shelf_indices = state.payload * in_dropoff * payload_requested # indices of shelves that are being dropped off
+        shelf_indices = (state.payload+1) * in_dropoff * payload_requested # indices of shelves that are being dropped off
+        shelf_indices = jnp.where(shelf_indices >=0, shelf_indices-1, -jnp.inf) # shift back
 
         # mask request to indicate dropped off shelves
         request = jnp.where(shelf_indices == state.request, -jnp.inf, state.request)
+        num_dropped_off = jnp.sum(request != state.request)
 
         # update requests by randomly sampling available shelves
         p = jnp.array([jnp.where(jnp.isin(i, request), 0, 1) for i in range(self.num_cells)])
@@ -211,7 +213,7 @@ class RWARE(RobotariumEnv):
         # (shape: [num_agents, num_cells])
         cell_update_mask = (jnp.arange(self.num_cells) == return_cells[:, None]) & valid_return[:, None]
 
-        # Cvalues to scatter (shape: [num_agents, num_cells])
+        # values to scatter (shape: [num_agents, num_cells])
         values_to_scatter = return_shelves[:, None] * cell_update_mask
 
         # updates from all agents (using max to handle overlaps)
@@ -232,7 +234,13 @@ class RWARE(RobotariumEnv):
             grid=grid
         )
         
+        # get obs
         obs = self.get_obs(state)
+
+        # get reward
+        rew = num_dropped_off * self.dropoff_shaping
+        violation_rew = self.violation_shaping * (violations['collision'] + violations['boundary'])
+        reward = {agent: jnp.where(violation_rew == 0, rew, violation_rew) for _, agent in enumerate(self.agents)}
 
         # set dones
         done = jnp.full((self.num_agents), state.step >= self.max_steps)
