@@ -38,12 +38,16 @@ class RWARE(RobotariumEnv):
             }
         
         # Zone dimensions
-        self.zone_width = 0.25
+        self.zone_width = 0.5
         
         # Visualization
         self.robot_markers = []
+        self.storage_markers = []
         self.shelf_markers = []
-        self.zone_markers = []
+        self.shelf_labels = []
+        self.storage_labels = []
+        self.request_label = None
+        self.dropoff_marker = None
     
     def reset(self, key) -> Tuple[Dict, State]:
         """
@@ -58,13 +62,13 @@ class RWARE(RobotariumEnv):
 
         # set agents to always start lined up on bottom of env
         bounds = self.robotarium.boundaries # lower left point / width/ height
-        x_poses = jnp.linspace(0.25, bounds[2] - 0.25, self.num_agents)
+        x_poses = jnp.linspace(bounds[0] + 0.5, bounds[0] + bounds[2] - 0.5, self.num_agents)
         y_poses = jnp.full((self.num_agents, ), (- bounds[3] // 2) + 0.25)
         rad = jnp.full(self.num_agents, jnp.pi/2)
         agent_poses = jnp.stack((x_poses, y_poses, rad))
 
         # set poses of shelves to be centered in free space, evenly space along x axis 
-        x_poses = jnp.linspace(0.25, bounds[2] - self.zone_width, self.num_cells // 2)
+        x_poses = jnp.linspace(bounds[0] + 0.5, bounds[0] + bounds[2] - self.zone_width, self.num_cells // 2)
         x_poses = jnp.concatenate((x_poses, x_poses))
         y_poses = jnp.concatenate(
             [jnp.full((self.num_cells // 2,), 0.25), jnp.full((self.num_cells // 2,), -0.25)]
@@ -198,7 +202,7 @@ class RWARE(RobotariumEnv):
         ) # this is kinda nasty
 
         # enforce only one cell can receive a single shelf
-        constraint = jnp.argmax(pickup_mask, axis=0)
+        constraint = jnp.argmax(return_mask, axis=0)
         return_mask = jnp.array(
             [[jnp.where(i == constraint[j], return_mask[i][j], False) for j in range(self.num_cells)] for i in range(self.num_agents)]
         )
@@ -299,5 +303,122 @@ class RWARE(RobotariumEnv):
 
         return {a: _obs(i) for i, a in enumerate(self.agents)}
 
+    #-----------------------------------------
+    # Visualization Specific Functions (NOT INTENDED TO BE JITTED)
+    #-----------------------------------------
 
+    def render_frame(self, state: State):
+        """
+        Updates visualizer figure to include goal position markers
 
+        Args:
+            state: (State) environment state
+        """
+        
+        # reset markers if at first step
+        if state.step == 1:
+            self.robot_markers = []
+            self.storage_markers = []
+            self.shelf_markers = []
+            self.shelf_labels = []
+            self.storage_labels = []
+            self.request_label = None
+            self.dropoff_marker = None
+        
+        shelves = state.grid[:, :2]
+        agents = state.p_pos[:self.num_agents, :2]
+
+        # add markers for robots
+        if not self.robot_markers:
+            self.robot_markers = [
+                self.visualizer.axes.scatter(
+                    jnp.array(agents[i, 0]),
+                    jnp.array(agents[i, 1]),
+                    marker='o',
+                    s=self.determine_marker_size(self.pickup_radius),
+                    facecolors='none',
+                    edgecolors='black',
+                    zorder=-2,
+                    linewidth=1
+                ) for i in range(self.num_agents)
+            ]
+
+        # add markers for shelves        
+        if not self.shelf_markers:
+            self.shelf_markers = [
+                self.visualizer.axes.add_patch(
+                    patches.Rectangle(
+                        shelves[i]-0.125,
+                        0.25,
+                        0.25,
+                        color='blue',
+                        alpha=0.5,
+                        zorder=1
+                    )
+                ) for i in range(self.num_cells)
+            ]
+
+            self.shelf_labels.extend(
+                [
+                    self.visualizer.axes.text(
+                        shelves[i,0], shelves[i,1], i,
+                        verticalalignment='center', horizontalalignment='center'
+                    ) for i in range(self.num_cells)
+                ]
+            )
+        
+        # add markers for storage zones
+        if not self.storage_markers:
+            self.storage_markers = [
+                self.visualizer.axes.add_patch(
+                    patches.Rectangle(
+                        shelves[i]-0.125,
+                        0.25,
+                        0.25,
+                        color='grey',
+                        alpha=0.5,
+                        zorder=-1
+                    )
+                ) for i in range(self.num_cells)
+            ]
+
+            self.storage_labels.extend(
+                [
+                    self.visualizer.axes.text(
+                        shelves[i,0], shelves[i,1], i,
+                        verticalalignment='center', horizontalalignment='center'
+                    ) for i in range(self.num_cells)
+                ]
+            )
+        
+        # add label for current reqests
+        if not self.request_label:
+            self.request_label = self.visualizer.axes.text(
+                -1.5, 0.8, f"Request: {state.request}",
+                verticalalignment='center', horizontalalignment='left'
+            )
+        
+        # add marker for dropoff zone
+        self.dropoff_marker = self.visualizer.axes.add_patch(
+            patches.Rectangle([1.5-self.zone_width, -1], self.zone_width, 2, color='green', zorder=-2)
+        )
+
+        # update robot marker positions
+        for i in range(self.num_agents):
+            self.robot_markers[i].set_offsets(agents[i])
+        
+        # update shelf markers
+        for i in range(self.num_agents):
+            if state.payload[i] >= 0:
+                idx = state.payload[i]
+                self.shelf_markers[idx].set_facecolor("yellow")
+                self.shelf_markers[idx].set_x(agents[i, 0]-0.125)
+                self.shelf_markers[idx].set_y(agents[i, 1]-0.125)
+                self.shelf_labels[idx].set_position(agents[i])
+        for i in range(self.num_cells):
+            if state.grid[i, 2] >= 0:
+                idx = int(state.grid[i, 2])
+                self.shelf_markers[idx].set_facecolor("blue")
+                self.shelf_markers[idx].set_x(state.grid[i, 0]-0.125)
+                self.shelf_markers[idx].set_y(state.grid[i, 1]-0.125)
+                self.shelf_labels[idx].set_position(state.grid[i, :2])

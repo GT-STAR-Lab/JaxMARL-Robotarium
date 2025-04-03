@@ -97,7 +97,7 @@ class TestWarehouse(unittest.TestCase):
             jnp.array_equal(obs['agent_0'][:-self.env.het_manager.dim_h], expected_obs)
         )
 
-        # agent 0
+        # agent 1
         expected_obs = jnp.array([-1.25, 0.5, 0, 1.25, 0.5, 0])
         self.assertTrue(
             jnp.array_equal(obs['agent_1'][:-self.env.het_manager.dim_h], expected_obs)

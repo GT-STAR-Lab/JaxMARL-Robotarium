@@ -19,7 +19,6 @@ class TestRWARE(unittest.TestCase):
             action_type="Discrete",
             max_steps=70,
             update_frequency=1,
-            time_shaping=0,
         )
         self.key = jax.random.PRNGKey(0)
     
@@ -40,8 +39,10 @@ class TestRWARE(unittest.TestCase):
         # agent 0 picks up shelf 0
         _, state = self.env.reset(self.key)
         p_pos = jnp.array([[0.25, 0.25,  0], [1, 0, 0], [0.25, 0.25,  0], [.25, -0.25, 0]])
+        grid = jnp.array([[0.25, 0.25,  0], [.25, -0.25, 1]])
         state = state.replace(
-            p_pos = p_pos,
+            p_pos=p_pos,
+            grid=grid
         )
 
         actions = {str(f'agent_{i}'): jnp.array([0]) for i in range(self.num_agents)}
@@ -53,8 +54,10 @@ class TestRWARE(unittest.TestCase):
         # agent 0 picks up shelf 1
         _, state = self.env.reset(self.key)
         p_pos = jnp.array([[0.25, -0.25,  0], [1, 0, 0], [0.25, 0.25,  0], [.25, -0.25, 0]])
+        grid = jnp.array([[0.25, 0.25,  0], [.25, -0.25, 1]])
         state = state.replace(
-            p_pos = p_pos,
+            p_pos=p_pos,
+            grid=grid
         )
 
         actions = {str(f'agent_{i}'): jnp.array([0]) for i in range(self.num_agents)}
@@ -66,8 +69,10 @@ class TestRWARE(unittest.TestCase):
         # both agents attempt to pick up shelf 0
         _, state = self.env.reset(self.key)
         p_pos = jnp.array([[0.25, 0.25,  0], [0.25, 0.25, 0], [0.25, 0.25,  0], [.25, -0.25, 0]])
+        grid = jnp.array([[0.25, 0.25,  0], [.25, -0.25, 1]])
         state = state.replace(
-            p_pos = p_pos,
+            p_pos=p_pos,
+            grid=grid
         )
 
         new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
@@ -78,8 +83,10 @@ class TestRWARE(unittest.TestCase):
         # both agents attempt to pick up unique shelves
         _, state = self.env.reset(self.key)
         p_pos = jnp.array([[0.25, 0.25,  0], [0.25, -0.25, 0], [0.25, 0.25,  0], [.25, -0.25, 0]])
+        grid = jnp.array([[0.25, 0.25,  0], [.25, -0.25, 1]])
         state = state.replace(
-            p_pos = p_pos,
+            p_pos=p_pos,
+            grid=grid
         )
 
         new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
@@ -90,8 +97,10 @@ class TestRWARE(unittest.TestCase):
         # agent 0 drops off shelf
         state = new_state
         p_pos = jnp.array([[1.5, 0.25,  0], [0.25, 0.25, 0], [0.25, 0.25,  0], [.25, -0.25, 0]])
+        grid = jnp.array([[0.25, 0.25,  0], [.25, -0.25, 1]])
         state = state.replace(
-            p_pos = p_pos,
+            p_pos=p_pos,
+            grid=grid
         )
         new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
 
@@ -102,8 +111,10 @@ class TestRWARE(unittest.TestCase):
         prev_state = new_state
         state = new_state
         p_pos = jnp.array([[0.25, -0.25,  0], [-1, 0.25, 0], [0.25, 0.25,  0], [.25, -0.25, 0]])
+        grid = jnp.array([[0.25, 0.25,  -1], [.25, -0.25, -1]])
         state = state.replace(
-            p_pos = p_pos,
+            p_pos=p_pos,
+            grid=grid
         )
         new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
 
@@ -113,21 +124,35 @@ class TestRWARE(unittest.TestCase):
         # both agents attempt to return
         state = prev_state
         p_pos = jnp.array([[0.25, -0.25,  0], [0.25, -0.25, 0], [0.25, 0.25,  0], [.25, -0.25, 0]])
+        grid = jnp.array([[0.25, 0.25,  -1], [.25, -0.25, -1]])
         state = state.replace(
-            p_pos = p_pos,
+            p_pos=p_pos,
+            grid=grid
         )
         new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
 
-        self.assertTrue(jnp.array_equal(new_state.grid[:, 2], jnp.array([-1, 0])))
-        self.assertTrue(jnp.array_equal(new_state.payload, jnp.array([-1, 1])))
+        # both agents attempt to successfully return
+        state = prev_state
+        p_pos = jnp.array([[0.25, -0.25,  0], [0.25, 0.25, 0], [0.25, 0.25,  0], [.25, -0.25, 0]])
+        grid = jnp.array([[0.25, 0.25,  -1], [.25, -0.25, -1]])
+        state = state.replace(
+            p_pos=p_pos,
+            grid=grid
+        )
+        new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
+
+        self.assertTrue(jnp.array_equal(new_state.grid[:, 2], jnp.array([1, 0])))
+        self.assertTrue(jnp.array_equal(new_state.payload, jnp.array([-1, -1])))
 
     def test_reward(self):
         # NOTE: this test is hacky because we unify step_env and reward in rware
         actions = {str(f'agent_{i}'): jnp.array([0]) for i in range(self.num_agents)}
         _, state = self.env.reset(self.key)
         p_pos = jnp.array([[0.25, 0.25,  0], [0.25, -0.25, 0], [0.25, 0.25,  0], [.25, -0.25, 0]])
+        grid = jnp.array([[0.25, 0.25,  0], [.25, -0.25, 1]])
         state = state.replace(
-            p_pos = p_pos,
+            p_pos=p_pos,
+            grid=grid
         )
 
         new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
@@ -138,8 +163,10 @@ class TestRWARE(unittest.TestCase):
         # agent 0 drops off shelf
         state = new_state
         p_pos = jnp.array([[1.5, 0.25,  0], [0.25, 0.25, 0], [0.25, 0.25,  0], [.25, -0.25, 0]])
+        grid = jnp.array([[0.25, 0.25,  -1], [.25, -0.25, 1]])
         state = state.replace(
-            p_pos = p_pos,
+            p_pos=p_pos,
+            grid=grid
         )
         new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
 
@@ -169,3 +196,63 @@ class TestRWARE(unittest.TestCase):
         self.assertTrue(
             jnp.array_equal(obs['agent_1'], expected_obs)
         )
+
+    def test_batched_rollout(self):
+        self.env = RWARE(
+            num_agents=self.num_agents,
+            num_cells=self.num_agents,
+            action_type="Discrete",
+            max_steps=70,
+            update_frequency=1,
+            controller={
+                "controller": "clf_uni_position",
+                "barrier_fn": "robust_barriers",
+            }
+        )
+        keys = jax.random.split(self.key, self.batch_size)
+        _, state = jax.vmap(self.env.reset, in_axes=0)(keys)
+
+        # start robots on shelves for easier testing
+        p_pos = jnp.concatenate(
+            (state.p_pos[:, self.num_agents:, ...], state.p_pos[:, self.num_agents:, ...]),
+            axis=1
+        )
+        state = state.replace(p_pos=p_pos)
+        initial_state = state
+
+        def get_action(state):
+            return {str(f'agent_{i}'): jnp.where(jnp.logical_or(state.step == 1, state.step == 35), 0, 1) for i in range(self.num_agents)}
+        
+        def wrapped_step(poses, unused):
+            actions = jax.vmap(get_action, in_axes=(0))(poses)
+            new_obs, new_state, rewards, dones, infos = jax.vmap(self.env.step, in_axes=(0, 0, 0))(keys, poses, actions)
+            return new_state, (new_state, rewards)
+
+        final_state, (batch, rewards) = jax.lax.scan(wrapped_step, state, None, 70)
+
+        rewards = jnp.array([rewards[agent] for agent in rewards])
+        
+        # check that the robot moved
+        for i in range(self.num_agents):
+            self.assertGreater(
+                jnp.sqrt(jnp.sum((final_state.p_pos[i] - initial_state.p_pos[i])**2)),
+                0
+            )
+        
+        if VISUALIZE:
+            # hack to add extra dim
+            render_batch = State()
+            fields = {}
+            for attr in batch.__dict__.keys():
+                if getattr(batch, attr) is None:
+                    continue
+                fields[f'{attr}'] = getattr(batch, attr)[None, ...]
+            render_batch = render_batch.replace(**fields)
+            frames = self.env.render(render_batch, seed_index=0, env_index=0)
+            frames[0].save(
+                'jaxmarl/environments/marbler/scenarios/test/rware.gif',
+                save_all=True,
+                append_images=frames[1:],
+                duration=100,
+                loop=0
+            )
