@@ -8,7 +8,7 @@ from jaxmarl.environments.marbler.scenarios.warehouse import Warehouse
 VISUALIZE = False
 
 class TestWarehouse(unittest.TestCase):
-    """unit tests for test_warehous.py"""
+    """unit tests for test_warehouse.py"""
 
     def setUp(self):
         self.num_agents = 2
