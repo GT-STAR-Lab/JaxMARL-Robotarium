@@ -4,3 +4,4 @@ from .scenarios.material_transport import MaterialTransport
 from .scenarios.warehouse import Warehouse
 from .scenarios.arctic_transport import ArcticTransport
 from .scenarios.foraging import Foraging
+from .scenarios.rware import RWARE

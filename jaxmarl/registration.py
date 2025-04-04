@@ -34,6 +34,7 @@ from .environments import (
     Warehouse,
     ArcticTransport,
     Foraging,
+    RWARE
 )
 
 
@@ -133,6 +134,8 @@ def make(env_id: str, **env_kwargs):
         env = ArcticTransport(**env_kwargs)
     elif env_id == "foraging":
         env = Foraging(**env_kwargs)
+    elif env_id == "rware":
+        env = RWARE(**env_kwargs)
 
     return env
 
@@ -172,4 +175,5 @@ registered_envs = [
     "warehouse",
     "arctic_transport",
     "foraging",
+    "rware",
 ]

@@ -12,10 +12,11 @@ class TestRWARE(unittest.TestCase):
 
     def setUp(self):
         self.num_agents = 2
+        self.num_cells = 4
         self.batch_size = 10
         self.env = RWARE(
             num_agents=self.num_agents,
-            num_cells=self.num_agents,
+            num_cells=self.num_cells,
             action_type="Discrete",
             max_steps=70,
             update_frequency=1,
@@ -38,8 +39,10 @@ class TestRWARE(unittest.TestCase):
     def test_step(self):
         # agent 0 picks up shelf 0
         _, state = self.env.reset(self.key)
-        p_pos = jnp.array([[0.25, 0.25,  0], [1, 0, 0], [0.25, 0.25,  0], [.25, -0.25, 0]])
-        grid = jnp.array([[0.25, 0.25,  0], [.25, -0.25, 1]])
+        p_pos = jnp.array(
+            [[0.25, 0.25,  0], [1, 0, 0], [0.25, 0.25,  0], [.25, -0.25, 0], [0.75, 0.25,  0], [.75, -0.25, 0]]
+        )
+        grid = jnp.array([[0.25, 0.25,  0], [.25, -0.25, 1], [0.75, 0.25,  2], [.75, -0.25, 3]])
         state = state.replace(
             p_pos=p_pos,
             grid=grid
@@ -48,13 +51,14 @@ class TestRWARE(unittest.TestCase):
         actions = {str(f'agent_{i}'): jnp.array([0]) for i in range(self.num_agents)}
         new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
 
-        self.assertTrue(jnp.array_equal(new_state.grid[:, 2], jnp.array([-1, 1])))
+        self.assertTrue(jnp.array_equal(new_state.grid[:, 2], jnp.array([-1, 1, 2, 3])))
         self.assertTrue(jnp.array_equal(new_state.payload, jnp.array([0, -1])))
 
         # agent 0 picks up shelf 1
         _, state = self.env.reset(self.key)
-        p_pos = jnp.array([[0.25, -0.25,  0], [1, 0, 0], [0.25, 0.25,  0], [.25, -0.25, 0]])
-        grid = jnp.array([[0.25, 0.25,  0], [.25, -0.25, 1]])
+        p_pos = jnp.array(
+            [[0.25, -0.25,  0], [1, 0, 0], [0.25, 0.25,  0], [.25, -0.25, 0], [0.75, 0.25,  0], [.75, -0.25, 0]]
+        )
         state = state.replace(
             p_pos=p_pos,
             grid=grid
@@ -63,13 +67,14 @@ class TestRWARE(unittest.TestCase):
         actions = {str(f'agent_{i}'): jnp.array([0]) for i in range(self.num_agents)}
         new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
 
-        self.assertTrue(jnp.array_equal(new_state.grid[:, 2], jnp.array([0, -1])))
+        self.assertTrue(jnp.array_equal(new_state.grid[:, 2], jnp.array([0, -1, 2, 3])))
         self.assertTrue(jnp.array_equal(new_state.payload, jnp.array([1, -1])))
 
         # both agents attempt to pick up shelf 0
         _, state = self.env.reset(self.key)
-        p_pos = jnp.array([[0.25, 0.25,  0], [0.25, 0.25, 0], [0.25, 0.25,  0], [.25, -0.25, 0]])
-        grid = jnp.array([[0.25, 0.25,  0], [.25, -0.25, 1]])
+        p_pos = jnp.array(
+            [[0.25, 0.25,  0], [0.25, 0.25, 0], [0.25, 0.25,  0], [.25, -0.25, 0], [0.75, 0.25,  0], [.75, -0.25, 0]]
+        )
         state = state.replace(
             p_pos=p_pos,
             grid=grid
@@ -77,13 +82,14 @@ class TestRWARE(unittest.TestCase):
 
         new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
 
-        self.assertTrue(jnp.array_equal(new_state.grid[:, 2], jnp.array([-1, 1])))
+        self.assertTrue(jnp.array_equal(new_state.grid[:, 2], jnp.array([-1, 1, 2, 3])))
         self.assertTrue(jnp.array_equal(new_state.payload, jnp.array([0, -1])))
 
         # both agents attempt to pick up unique shelves
         _, state = self.env.reset(self.key)
-        p_pos = jnp.array([[0.25, 0.25,  0], [0.25, -0.25, 0], [0.25, 0.25,  0], [.25, -0.25, 0]])
-        grid = jnp.array([[0.25, 0.25,  0], [.25, -0.25, 1]])
+        p_pos = jnp.array(
+            [[0.25, 0.25,  0], [0.25, -0.25, 0], [0.25, 0.25,  0], [.25, -0.25, 0], [0.75, 0.25,  0], [.75, -0.25, 0]]
+        )
         state = state.replace(
             p_pos=p_pos,
             grid=grid
@@ -91,65 +97,71 @@ class TestRWARE(unittest.TestCase):
 
         new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
 
-        self.assertTrue(jnp.array_equal(new_state.grid[:, 2], jnp.array([-1, -1])))
+        self.assertTrue(jnp.array_equal(new_state.grid[:, 2], jnp.array([-1, -1, 2, 3])))
         self.assertTrue(jnp.array_equal(new_state.payload, jnp.array([0, 1])))
 
-        # agent 0 drops off shelf
+        # agent 0 drops off shelf, make sure agent 2 doesn't drop off shelf
         state = new_state
-        p_pos = jnp.array([[1.5, 0.25,  0], [0.25, 0.25, 0], [0.25, 0.25,  0], [.25, -0.25, 0]])
-        grid = jnp.array([[0.25, 0.25,  0], [.25, -0.25, 1]])
+        p_pos = jnp.array(
+            [[1.5, 0.25,  0], [-1, -0.25, 0], [0.25, 0.25,  0], [.25, -0.25, 0], [0.75, 0.25,  0], [.75, -0.25, 0]]
+        )
         state = state.replace(
             p_pos=p_pos,
-            grid=grid
+            request=jnp.array([0, 1]),
         )
         new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
 
-        self.assertTrue(jnp.array_equal(new_state.grid[:, 2], jnp.array([-1, -1])))
-        self.assertTrue(jnp.array_equal(new_state.request, jnp.array([0, 1]))) # same shelf back in queue
+        self.assertTrue(jnp.array_equal(new_state.grid[:, 2], jnp.array([-1, -1, 2, 3])))
+        self.assertTrue(jnp.array_equal(new_state.request[-1],  1)) # second shelf should stay the same
 
         # agent 0 returns shelf 0 at cell 1
         prev_state = new_state
         state = new_state
-        p_pos = jnp.array([[0.25, -0.25,  0], [-1, 0.25, 0], [0.25, 0.25,  0], [.25, -0.25, 0]])
-        grid = jnp.array([[0.25, 0.25,  -1], [.25, -0.25, -1]])
+        p_pos = jnp.array(
+            [[0.25, -0.25,  0], [-1, -0.25, 0], [0.25, 0.25,  0], [.25, -0.25, 0], [0.75, 0.25,  0], [.75, -0.25, 0]]
+        )
         state = state.replace(
             p_pos=p_pos,
-            grid=grid
         )
         new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
 
-        self.assertTrue(jnp.array_equal(new_state.grid[:, 2], jnp.array([-1, 0])))
+        self.assertTrue(jnp.array_equal(new_state.grid[:, 2], jnp.array([-1, 0, 2, 3])))
         self.assertTrue(jnp.array_equal(new_state.payload, jnp.array([-1, 1])))
 
-        # both agents attempt to return
+        # both agents attempt to return at same cell
         state = prev_state
-        p_pos = jnp.array([[0.25, -0.25,  0], [0.25, -0.25, 0], [0.25, 0.25,  0], [.25, -0.25, 0]])
-        grid = jnp.array([[0.25, 0.25,  -1], [.25, -0.25, -1]])
+        p_pos = jnp.array(
+            [[0.25, -0.25,  0], [0.25, -0.25, 0], [0.25, 0.25,  0], [.25, -0.25, 0], [0.75, 0.25,  0], [.75, -0.25, 0]]
+        )
         state = state.replace(
             p_pos=p_pos,
-            grid=grid
         )
         new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
+
+        self.assertTrue(jnp.array_equal(new_state.grid[:, 2], jnp.array([-1, 0, 2, 3])))
+        self.assertTrue(jnp.array_equal(new_state.payload, jnp.array([-1, 1])))
 
         # both agents attempt to successfully return
         state = prev_state
-        p_pos = jnp.array([[0.25, -0.25,  0], [0.25, 0.25, 0], [0.25, 0.25,  0], [.25, -0.25, 0]])
-        grid = jnp.array([[0.25, 0.25,  -1], [.25, -0.25, -1]])
+        p_pos = jnp.array(
+            [[0.25, -0.25,  0], [0.25, 0.25, 0], [0.25, 0.25,  0], [.25, -0.25, 0], [0.75, 0.25,  0], [.75, -0.25, 0]]
+        )
         state = state.replace(
             p_pos=p_pos,
-            grid=grid
         )
         new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
 
-        self.assertTrue(jnp.array_equal(new_state.grid[:, 2], jnp.array([1, 0])))
+        self.assertTrue(jnp.array_equal(new_state.grid[:, 2], jnp.array([1, 0, 2, 3])))
         self.assertTrue(jnp.array_equal(new_state.payload, jnp.array([-1, -1])))
 
     def test_reward(self):
         # NOTE: this test is hacky because we unify step_env and reward in rware
         actions = {str(f'agent_{i}'): jnp.array([0]) for i in range(self.num_agents)}
         _, state = self.env.reset(self.key)
-        p_pos = jnp.array([[0.25, 0.25,  0], [0.25, -0.25, 0], [0.25, 0.25,  0], [.25, -0.25, 0]])
-        grid = jnp.array([[0.25, 0.25,  0], [.25, -0.25, 1]])
+        p_pos = jnp.array(
+            [[0.25, 0.25,  0], [1, 0, 0], [0.25, 0.25,  0], [.25, -0.25, 0], [0.75, 0.25,  0], [.75, -0.25, 0]]
+        )
+        grid = jnp.array([[0.25, 0.25,  0], [.25, -0.25, 1], [0.75, 0.25,  2], [.75, -0.25, 3]])
         state = state.replace(
             p_pos=p_pos,
             grid=grid
@@ -162,11 +174,11 @@ class TestRWARE(unittest.TestCase):
 
         # agent 0 drops off shelf
         state = new_state
-        p_pos = jnp.array([[1.5, 0.25,  0], [0.25, 0.25, 0], [0.25, 0.25,  0], [.25, -0.25, 0]])
-        grid = jnp.array([[0.25, 0.25,  -1], [.25, -0.25, 1]])
+        p_pos = jnp.array(
+            [[1.5, 0.25,  0], [1, 0, 0], [0.25, 0.25,  0], [.25, -0.25, 0], [0.75, 0.25,  0], [.75, -0.25, 0]]
+        )
         state = state.replace(
             p_pos=p_pos,
-            grid=grid
         )
         new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
 
@@ -181,18 +193,19 @@ class TestRWARE(unittest.TestCase):
             p_pos=p_pos,
             payload=jnp.array([0, -1]),
             grid=grid,
+            request=jnp.array([0, 1]),
         )
 
         obs = self.env.get_obs(state)
         
         # agent 0
-        expected_obs = jnp.array([1, 2, 3, 4, 5, 6, 0, 7, 8, -1, 10, 11, 1])
+        expected_obs = jnp.array([1, 2, 3, 4, 5, 6, 0, 7, 8, -1, 10, 11, 1, 0, 1])
         self.assertTrue(
             jnp.array_equal(obs['agent_0'], expected_obs)
         )
 
         # agent 1
-        expected_obs = jnp.array([4, 5, 6, 1, 2, 3, -1, 7, 8, -1, 10, 11, 1])
+        expected_obs = jnp.array([4, 5, 6, 1, 2, 3, -1, 7, 8, -1, 10, 11, 1, 0, 1])
         self.assertTrue(
             jnp.array_equal(obs['agent_1'], expected_obs)
         )
@@ -200,7 +213,7 @@ class TestRWARE(unittest.TestCase):
     def test_batched_rollout(self):
         self.env = RWARE(
             num_agents=self.num_agents,
-            num_cells=self.num_agents,
+            num_cells=self.num_cells,
             action_type="Discrete",
             max_steps=70,
             update_frequency=1,
@@ -214,7 +227,7 @@ class TestRWARE(unittest.TestCase):
 
         # start robots on shelves for easier testing
         p_pos = jnp.concatenate(
-            (state.p_pos[:, self.num_agents:, ...], state.p_pos[:, self.num_agents:, ...]),
+            (state.p_pos[:, self.num_agents:self.num_agents+2, ...], state.p_pos[:, self.num_agents:, ...]),
             axis=1
         )
         state = state.replace(p_pos=p_pos)

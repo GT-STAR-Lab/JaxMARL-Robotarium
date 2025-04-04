@@ -30,7 +30,7 @@ class RWARE(RobotariumEnv):
         self.violation_shaping = kwargs.get('violation_shaping', 0)
 
         # Observation space (poses of all agents, payload, poses of all storage locations, requests)
-        self.obs_dim = (3*self.num_agents) + 1 + (3*self.num_cells)
+        self.obs_dim = (3*self.num_agents) + 1 + (3*self.num_cells) + self.num_agents
 
         if self.backend == 'jax':
             self.observation_spaces = {
@@ -68,7 +68,7 @@ class RWARE(RobotariumEnv):
         agent_poses = jnp.stack((x_poses, y_poses, rad))
 
         # set poses of shelves to be centered in free space, evenly space along x axis 
-        x_poses = jnp.linspace(bounds[0] + 0.5, bounds[0] + bounds[2] - self.zone_width, self.num_cells // 2)
+        x_poses = jnp.linspace(bounds[0] + 0.5, bounds[0] + bounds[2] - 2*self.zone_width, self.num_cells // 2)
         x_poses = jnp.concatenate((x_poses, x_poses))
         y_poses = jnp.concatenate(
             [jnp.full((self.num_cells // 2,), 0.25), jnp.full((self.num_cells // 2,), -0.25)]
@@ -144,11 +144,9 @@ class RWARE(RobotariumEnv):
 
         pickup_mask = jnp.logical_and(
             dists < self.pickup_radius, jnp.logical_and(                        # in range of shelf
-                state.payload == -1, jnp.logical_and(                           # agent isn't carrying shelf
-                    (action_idx == 0).flatten(),                                # agent is in pickup mode
-                    state.grid[:, 2] >= 0,                                      # shelf is at pickup location
-                )
-            )
+                state.payload == -1,                                            # agent isn't carrying shelf
+                (action_idx == 0).flatten(),                                    # agent is in pickup mode
+            ).reshape(-1,1)
         ) # this is kinda nasty
 
         # enforce only one agent can pickup one shelf
@@ -162,7 +160,7 @@ class RWARE(RobotariumEnv):
         valid_pickup = jnp.any(pickup_mask, axis=1)
         payload = jnp.where(valid_pickup, picked_shelves, state.payload)
         updated_grid = jnp.array(
-            [jnp.where(jnp.isin(state.grid[i, 2], payload), -1, state.grid[i,2]) for i in range(self.num_cells)]
+            [jnp.where(jnp.logical_and(jnp.isin(state.grid[i, 2], payload), state.grid[i, 2] >= 0), -1, state.grid[i,2]) for i in range(self.num_cells)]
         )
         grid = jnp.concatenate((state.grid[:, :2], updated_grid.reshape(-1,1)), axis=-1)   # update grid to reflect shelves picked up
 
@@ -174,9 +172,8 @@ class RWARE(RobotariumEnv):
         payload_requested = jnp.isin(state.payload, state.request)
 
         # get indices of shelves in dropoff zone that are being dropped off
-        in_dropoff = jnp.where(in_dropoff, 1, -1)
-        payload_requested = jnp.where(payload_requested, 1, -1)
-        shelf_indices = (state.payload+1) * in_dropoff * payload_requested # indices of shelves that are being dropped off
+        shelf_mult_mask = jnp.where(jnp.logical_and(in_dropoff, payload_requested), 1, -1)
+        shelf_indices = (state.payload+1) * shelf_mult_mask # indices of shelves that are being dropped off
         shelf_indices = jnp.where(shelf_indices >=0, shelf_indices-1, -jnp.inf) # shift back
 
         # mask request to indicate dropped off shelves
@@ -194,11 +191,9 @@ class RWARE(RobotariumEnv):
         #----------------------------------------------------------
         return_mask = jnp.logical_and(
             dists < self.pickup_radius, jnp.logical_and(                        # in range of shelf
-                state.payload >= 0, jnp.logical_and(                            # agent isn't carrying shelf
-                    (action_idx == 0).flatten(), 
-                    state.grid[:, 2] < 0,                                       # no shelf at pickup location                                                                                                
-                )
-            )
+                state.payload >= 0,                                             # agent isn't carrying shelf
+                (action_idx == 0).flatten()                                     # agent is in return mode
+            ).reshape(-1,1)
         ) # this is kinda nasty
 
         # enforce only one cell can receive a single shelf
@@ -228,6 +223,9 @@ class RWARE(RobotariumEnv):
             jnp.any(cell_update_mask, axis=0),  # check if agent wants to update this cell
             new_values,                         # yes, take the new value
             grid[:, 2]                          # no, keep original value
+        )
+        updated_grid = jnp.array(
+            [jnp.where(state.grid[i, 2] < 0, updated_grid[i], grid[i,2]) for i in range(self.num_cells)]
         )
 
         grid = jnp.concatenate((grid[:, :2], updated_grid.reshape(-1,1)), axis=-1)   # update grid to reflect shelves picked up
@@ -297,6 +295,7 @@ class RWARE(RobotariumEnv):
                 other_pos.flatten(),  # num_agents-1, 3
                 state.payload[aidx].reshape(-1), # 1
                 state.grid.flatten(), # num_cells, 3
+                state.request.flatten(), # num_agents
             ])
 
             return obs
@@ -400,7 +399,7 @@ class RWARE(RobotariumEnv):
         
         # add marker for dropoff zone
         self.dropoff_marker = self.visualizer.axes.add_patch(
-            patches.Rectangle([1.5-self.zone_width, -1], self.zone_width, 2, color='green', zorder=-2)
+            patches.Rectangle([1.5-self.zone_width, -1], self.zone_width, 2, color='green', zorder=-3)
         )
 
         # update robot marker positions
