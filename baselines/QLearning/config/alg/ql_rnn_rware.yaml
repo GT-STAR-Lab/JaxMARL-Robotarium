@@ -1,10 +1,10 @@
 # valid for iql, vdn, qmix
-"TOTAL_TIMESTEPS": 5e6
+"TOTAL_TIMESTEPS": 10e6
 "NUM_ENVS": 8
 "NUM_STEPS": 101
 "BUFFER_SIZE": 5000
 "BUFFER_BATCH_SIZE": 32
-"HIDDEN_SIZE": 256
+"HIDDEN_SIZE": 512
 "MIXER_EMBEDDING_DIM": 32 # just for qmix
 "MIXER_HYPERNET_HIDDEN_DIM": 128 # just for qmix
 "MIXER_INIT_SCALE": 0.001 # just for qmix
@@ -24,7 +24,7 @@
 "ENV_NAME": "rware"
 "ENV_KWARGS": {
   "num_agents": 3,
-  "num_cells": 4,
+  "num_cells": 6,
   "max_steps": 100,
   "action_type": "Discrete",
   "robotarium": {
@@ -36,7 +36,7 @@
     "controller": "clf_uni_position",
     "barrier_fn": "robust_barriers",
   },
-  "update_frequency": 30
+  "update_frequency": 60
 }
 
 # evaluate

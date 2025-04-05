@@ -92,6 +92,7 @@ class RWARE(RobotariumEnv):
             payload=jnp.full((self.num_agents,), -1), # track shelves carried by agents, -1 indicates no shelf carried, # use payload to track shelf weights
             grid=shelf_grid.T, # use grid to track shelf storage locations, 
             request=request,
+            zone1_load=0,
         )
 
         return self.get_obs(state), state
@@ -177,13 +178,13 @@ class RWARE(RobotariumEnv):
         shelf_indices = jnp.where(shelf_indices >=0, shelf_indices-1, -jnp.inf) # shift back
 
         # mask request to indicate dropped off shelves
-        request = jnp.where(shelf_indices == state.request, -jnp.inf, state.request)
-        num_dropped_off = jnp.sum(request != state.request)
+        request = jnp.array([jnp.where(jnp.isin(state.request[i], shelf_indices), -jnp.inf, state.request[i]) for i in range(self.num_agents)])
+        num_dropped_off = jnp.sum(jnp.where(request < 0, 1, 0)) # number of shelves dropped off
 
         # update requests by randomly sampling available shelves
         p = jnp.array([jnp.where(jnp.isin(i, request), 0, 1) for i in range(self.num_cells)])
         key, key_r = jax.random.split(key)
-        random_request = jax.random.choice(key_r, jnp.arange(self.num_cells,), (self.num_agents,), p=p)
+        random_request = jax.random.choice(key_r, jnp.arange(self.num_cells,), (self.num_agents,), p=p, replace=False)
         request = jnp.where(request < 0, random_request, request).astype(int)
     
         #----------------------------------------------------------
@@ -206,7 +207,7 @@ class RWARE(RobotariumEnv):
         valid_return = jnp.any(return_mask, axis=1)
         return_shelves = jnp.where(valid_return, state.payload, -1)
         return_cells = jnp.where(valid_return, jnp.argmax(return_mask, axis=1), -1)
-        payload = jnp.where(valid_return, -1, payload)
+        # payload = jnp.where(valid_return, -1, payload)
 
         # mask where each position indicates if it should be updated
         # (shape: [num_agents, num_cells])
@@ -227,13 +228,16 @@ class RWARE(RobotariumEnv):
         updated_grid = jnp.array(
             [jnp.where(state.grid[i, 2] < 0, updated_grid[i], grid[i,2]) for i in range(self.num_cells)]
         )
+        payload = jnp.array([jnp.where(jnp.isin(payload[i], updated_grid), -1, payload[i]) for i in range(self.num_agents)])
 
         grid = jnp.concatenate((grid[:, :2], updated_grid.reshape(-1,1)), axis=-1)   # update grid to reflect shelves picked up
 
+        total_deliveries = num_dropped_off + state.zone1_load
         state = state.replace(
             request=request,
             payload=payload,
-            grid=grid
+            grid=grid,
+            zone1_load=total_deliveries,
         )
         
         # get obs
@@ -252,6 +256,7 @@ class RWARE(RobotariumEnv):
         )
 
         info = {
+            'total_deliveries': jnp.full((self.num_agents,), state.zone1_load),
             'collision': jnp.full((self.num_agents,), violations['collision']),
             'boundary': jnp.full((self.num_agents,), violations['boundary']),
         }
@@ -421,3 +426,6 @@ class RWARE(RobotariumEnv):
                 self.shelf_markers[idx].set_x(state.grid[i, 0]-0.125)
                 self.shelf_markers[idx].set_y(state.grid[i, 1]-0.125)
                 self.shelf_labels[idx].set_position(state.grid[i, :2])
+
+        # update label for requests
+        self.request_label.set_text(f"Request: {state.request}")

@@ -111,8 +111,10 @@ class TestRWARE(unittest.TestCase):
         )
         new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
 
+        self.assertTrue(jnp.array_equal(state.payload, jnp.array([0, 1])))
         self.assertTrue(jnp.array_equal(new_state.grid[:, 2], jnp.array([-1, -1, 2, 3])))
-        self.assertTrue(jnp.array_equal(new_state.request[-1],  1)) # second shelf should stay the same
+        self.assertTrue(new_state.request[-1] == 1) # second shelf should stay the same
+        self.assertTrue(new_state.request[0] != state.request[0]) # first shelf should change
 
         # agent 0 returns shelf 0 at cell 1
         prev_state = new_state
@@ -125,8 +127,22 @@ class TestRWARE(unittest.TestCase):
         )
         new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
 
+        self.assertTrue(jnp.array_equal(new_state.payload, jnp.array([-1, 1])))
         self.assertTrue(jnp.array_equal(new_state.grid[:, 2], jnp.array([-1, 0, 2, 3])))
         self.assertTrue(jnp.array_equal(new_state.payload, jnp.array([-1, 1])))
+
+        # agent 0 attempts to return shelf at occupied cell
+        state = prev_state
+        p_pos = jnp.array(
+            [[0.75, -0.25,  0], [-1, -0.25, 0], [0.25, 0.25,  0], [.25, -0.25, 0], [0.75, 0.25,  0], [.75, -0.25, 0]]
+        )
+        state = state.replace(
+            p_pos=p_pos,
+        )
+        new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
+
+        self.assertTrue(jnp.array_equal(new_state.payload, jnp.array([0, 1])))
+        self.assertTrue(jnp.array_equal(new_state.grid[:, 2], jnp.array([-1, -1, 2, 3])))
 
         # both agents attempt to return at same cell
         state = prev_state
@@ -138,6 +154,7 @@ class TestRWARE(unittest.TestCase):
         )
         new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
 
+        self.assertTrue(jnp.array_equal(new_state.payload, jnp.array([-1, 1])))
         self.assertTrue(jnp.array_equal(new_state.grid[:, 2], jnp.array([-1, 0, 2, 3])))
         self.assertTrue(jnp.array_equal(new_state.payload, jnp.array([-1, 1])))
 
@@ -151,6 +168,7 @@ class TestRWARE(unittest.TestCase):
         )
         new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
 
+        self.assertTrue(jnp.array_equal(new_state.payload, jnp.array([-1, -1])))
         self.assertTrue(jnp.array_equal(new_state.grid[:, 2], jnp.array([1, 0, 2, 3])))
         self.assertTrue(jnp.array_equal(new_state.payload, jnp.array([-1, -1])))
 

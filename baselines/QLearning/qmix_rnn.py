@@ -737,6 +737,8 @@ def single_run(config):
             )
             save_params(params, save_path)
 
+    # force multiruns to finish correctly
+    wandb.finish()
 
 def tune(default_config):
     """Hyperparameter sweep with wandb."""
