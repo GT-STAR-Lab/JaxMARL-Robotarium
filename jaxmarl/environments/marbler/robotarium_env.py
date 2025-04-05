@@ -25,17 +25,20 @@ class State:
     step: int = None
     het_rep: chex.Array = None
 
-    # pcp specific fields
+    # pcp fields
     prey_sensed: chex.Array = None
     prey_captured: chex.Array = None
 
-    # material transport / warehouse specific fields
+    # material transport / warehouse / foraging fields
     zone1_load: int = None
     zone2_load: int = None
     payload: chex.Array = None
 
-    # arctic transport specific fields
+    # arctic transport / rware fields
     grid: chex.Array = None
+
+    # rware fields
+    request: chex.Array = None
 
 class HetManager:
     def __init__(
