@@ -97,6 +97,41 @@ class RWARE(RobotariumEnv):
 
         return self.get_obs(state), state
     
+    def _decode_discrete_action(self, a_idx: int, action: int, state: State):
+        """
+        Decode action index into null, up, down, left, right actions
+
+        Args:
+            a_idx (int): agent index
+            action: (int) action index
+            state: (State) environment state
+        
+        Returns:
+            (chex.Array) desired (x,y) position
+        """
+        goals = jnp.array([[0, 0], [0, 1], [0, -1], [1, 0], [-1, 0]])
+        candidate_goals = state.p_pos[a_idx,:2] + (goals[action] * self.step_dist)
+
+        # ensure goals are in bound
+        b = jnp.array(self.robotarium.boundaries)
+        in_goals = jnp.clip(candidate_goals, b[:2] + 0.1, b[:2] + b[2:] - 0.1)
+
+        # ensure goals are not in collision with cells containing shelves
+        in_goals = jnp.where(
+            jnp.logical_and(
+                state.grid[:, 2] >= 0, jnp.logical_and(
+                    state.payload[a_idx] >= 0, jnp.logical_and(
+                        jnp.abs(jnp.linspace(state.p_pos[a_idx, 0], in_goals.flatten()[0], 5)[:, None] - state.grid[:, 0][None, :]) < 0.125,
+                        jnp.abs(jnp.linspace(state.p_pos[a_idx, 1], in_goals.flatten()[1], 5)[:, None] - state.grid[:, 1][None, :]) < 0.125
+                    ).any(axis=0)
+                )
+            ).any(),
+            state.p_pos[a_idx,:2].reshape(1, -1),
+            in_goals.reshape(1, -1)
+        )
+
+        return in_goals
+    
     def step_env(
         self, key, state: State, actions: Dict
     ) -> Tuple[Dict, State, Dict[str, float], Dict[str, bool], Dict]:
@@ -352,9 +387,9 @@ class RWARE(RobotariumEnv):
             self.shelf_markers = [
                 self.visualizer.axes.add_patch(
                     patches.Rectangle(
-                        shelves[i]-0.125,
-                        0.25,
-                        0.25,
+                        shelves[i]-0.075,
+                        0.15,
+                        0.15,
                         color='blue',
                         alpha=0.5,
                         zorder=1
@@ -416,15 +451,15 @@ class RWARE(RobotariumEnv):
             if state.payload[i] >= 0:
                 idx = state.payload[i]
                 self.shelf_markers[idx].set_facecolor("yellow")
-                self.shelf_markers[idx].set_x(agents[i, 0]-0.125)
-                self.shelf_markers[idx].set_y(agents[i, 1]-0.125)
+                self.shelf_markers[idx].set_x(agents[i, 0]-0.075)
+                self.shelf_markers[idx].set_y(agents[i, 1]-0.075)
                 self.shelf_labels[idx].set_position(agents[i])
         for i in range(self.num_cells):
             if state.grid[i, 2] >= 0:
                 idx = int(state.grid[i, 2])
                 self.shelf_markers[idx].set_facecolor("blue")
-                self.shelf_markers[idx].set_x(state.grid[i, 0]-0.125)
-                self.shelf_markers[idx].set_y(state.grid[i, 1]-0.125)
+                self.shelf_markers[idx].set_x(state.grid[i, 0]-0.075)
+                self.shelf_markers[idx].set_y(state.grid[i, 1]-0.075)
                 self.shelf_labels[idx].set_position(state.grid[i, :2])
 
         # update label for requests
