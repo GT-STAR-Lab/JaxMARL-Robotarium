@@ -21,17 +21,20 @@ class State:
     step: int = None
     het_rep: jnp.ndarray = None
 
-    # pcp specific fields
+    # pcp fields
     prey_sensed: jnp.ndarray = None
     prey_captured: jnp.ndarray = None
 
-    # material transport specific fields
+    # material transport / warehouse / foraging fields
     zone1_load: int = None
     zone2_load: int = None
     payload: jnp.ndarray = None
 
-    # arctic transport specific fields
+    # arctic transport / rware fields
     grid: jnp.ndarray = None
+
+    # rware fields
+    request: jnp.ndarray = None
 
     def replace(self, **kwargs):
         """

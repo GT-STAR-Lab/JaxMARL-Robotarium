@@ -35,6 +35,36 @@ class TestRWARE(unittest.TestCase):
         self.assertTrue(state.request.shape == (self.num_agents,))
         self.assertTrue(jnp.unique(state.request).shape[0] == self.num_agents)
         self.assertTrue(state.step == 0)
+
+    def test_decode_discrete_action(self):
+        # action should execute fine and cart should be picked up
+        _, state = self.env.reset(self.key)
+        p_pos = jnp.array(
+            [[0.25, 0.25,  0], [1, 0, 0], [0.25, 0.25,  0], [.25, -0.25, 0], [0.75, 0.25,  0], [.75, -0.25, 0]]
+        )
+        grid = jnp.array([[0.25, 0.25,  0], [.25, -0.25, 1], [0.75, 0.25,  2], [.75, -0.25, 3]])
+        state = state.replace(
+            p_pos=p_pos,
+            grid=grid
+        )
+
+        actions = {str(f'agent_{i}'): jnp.array([0]) for i in range(self.num_agents)}
+        new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
+        self.assertTrue(jnp.array_equal(new_state.grid[:, 2], jnp.array([-1, 1, 2, 3])))
+        self.assertTrue(jnp.array_equal(new_state.payload, jnp.array([0, -1])))
+
+        # action should not be in collision with cart
+        state = new_state
+        p_pos = jnp.array(
+            [[0.25, -0.28,  jnp.pi/2], [1, 0, 0], [0.25, 0.25,  0], [.25, -0.25, 0], [0.75, 0.25,  0], [.75, -0.25, 0]]
+        )
+        state = state.replace(
+            p_pos=p_pos,
+        )
+        actions = {str(f'agent_{i}'): jnp.array([1]) for i in range(self.num_agents)}
+        new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
+        self.assertTrue((jnp.abs(new_state.p_pos[0, :2] - p_pos[0, :2]) < jnp.array([0.125, 0.125])).all())
+
     
     def test_step(self):
         # agent 0 picks up shelf 0
