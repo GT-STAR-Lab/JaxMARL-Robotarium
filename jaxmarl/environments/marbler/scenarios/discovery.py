@@ -1,5 +1,5 @@
 """
-Predator Capture Prey where sensing robots discover prey and capture robots capture prey.
+Discovery where sensing robots discover landmarks and tagging robots tag landmarks.
 """
 
 # wrap import statement in try-except block to allow for correct import during deployment
@@ -8,16 +8,16 @@ try:
 except Exception as e:
     from robotarium_env import *
 
-class PredatorCapturePrey(RobotariumEnv):
+class Discovery(RobotariumEnv):
     def __init__(self, num_agents, max_steps=80, **kwargs):
-        self.name = 'MARBLER_predator_capture_prey'
+        self.name = 'MARBLER_het_discovery'
         self.backend = kwargs.get('backend', 'jax')
 
-        self.num_prey = kwargs.get('num_prey', 6)
+        self.num_landmarks = kwargs.get('num_landmarks', 6)
 
         # Heterogeneity
         self.num_sensing = kwargs.get('num_sensing', 2)
-        self.num_capturing = kwargs.get('num_capturing', 2)
+        self.num_tagging = kwargs.get('num_tagging', 2)
         default_het_args = {
             'num_agents': num_agents,
             'type': 'capability_set',
@@ -39,12 +39,12 @@ class PredatorCapturePrey(RobotariumEnv):
 
         # Reward shaping
         self.sense_shaping = kwargs.get('sense_shaping', 1)
-        self.capture_shaping = kwargs.get('capture_shaping', 5)
+        self.tag_shaping = kwargs.get('tag_shaping', 5)
         self.violation_shaping = kwargs.get('violation_shaping', 0)
         self.time_shaping = kwargs.get('time_shaping', -0.05)
 
-        # Observation space (poses of all agents, prey locations if sensed, capabilities)
-        self.obs_dim = (3 * self.num_agents) + (3 * self.num_prey) + self.het_manager.dim_h
+        # Observation space (poses of all agents, landmark locations if sensed, capabilities)
+        self.obs_dim = (3 * self.num_agents) + (3 * self.num_landmarks) + self.het_manager.dim_h
         if self.backend == 'jax':
             self.observation_spaces = {
                 i: Box(-jnp.inf, jnp.inf, (self.obs_dim,)) for i in self.agents
@@ -52,7 +52,7 @@ class PredatorCapturePrey(RobotariumEnv):
 
         # Visualization
         self.robot_markers = []
-        self.prey_markers = []
+        self.landmark_markers = []
 
     def reset(self, key) -> Tuple[Dict, State]:
         """
@@ -76,17 +76,17 @@ class PredatorCapturePrey(RobotariumEnv):
         )
         self.robotarium.poses = agent_poses[:, :self.num_agents]
 
-        # randomly generate initial poses for prey
-        key, key_p = jax.random.split(key)
-        prey_poses = generate_initial_conditions(
-            self.num_prey,
+        # randomly generate initial poses for landmarks
+        key, key_l = jax.random.split(key)
+        landmark_poses = generate_initial_conditions(
+            self.num_landmarks,
             width=ROBOTARIUM_WIDTH,
             height=ROBOTARIUM_HEIGHT,
             spacing=0.5,
-            key=key_p
+            key=key_l
         )
         
-        poses = jnp.concatenate([agent_poses, prey_poses], axis=-1)
+        poses = jnp.concatenate([agent_poses, landmark_poses], axis=-1)
 
         # set velocities to 0
         self.robotarium.set_velocities(jnp.arange(self.num_agents), jnp.zeros((2, self.num_agents)))
@@ -97,8 +97,8 @@ class PredatorCapturePrey(RobotariumEnv):
             done=jnp.full((self.num_agents), False),
             step=0,
             het_rep = self.het_manager.sample(key_het),
-            prey_sensed = jnp.full((self.num_prey,), False),
-            prey_captured = jnp.full((self.num_prey,), False)
+            landmark_sensed = jnp.full((self.num_landmarks,), False),
+            landmark_tagged = jnp.full((self.num_landmarks,), False)
         )
 
         return self.get_obs(state), state
@@ -141,19 +141,19 @@ class PredatorCapturePrey(RobotariumEnv):
         # get reward
         reward = self.rewards(state)
 
-        # update sensed prey (if prey in range, mark as sensed if not already marked)
-        prey_pos = state.p_pos[self.num_agents:, :2]    # get x, y of prey
+        # update sensed landmarks (if landmark in range, mark as sensed if not already marked)
+        landmark_pos = state.p_pos[self.num_agents:, :2]    # get x, y of landmarks
         sense_pos = state.p_pos[:self.num_sensing, :2]  # get x, y of only sensing agents
-        sense_dist = jnp.linalg.norm(sense_pos[:, None] - prey_pos[None, :], axis=-1)    # get dist from all sensing agents to all prey
+        sense_dist = jnp.linalg.norm(sense_pos[:, None] - landmark_pos[None, :], axis=-1)    # get dist from all sensing agents to all landmarks
         sensed = sense_dist < state.het_rep[:self.num_sensing, 0, None] # compare to sensing radii per agent
 
-        # update captured prey (if prey captured, mark as captured if not already captured)
-        capture_pos = state.p_pos[self.num_sensing:self.num_sensing+self.num_capturing, :2]  # get x, y of only capturing agents
-        capture_dist = jnp.linalg.norm(capture_pos[:, None] - prey_pos[None, :], axis=-1)    # get dist from all capturing agents to all prey
-        captured = capture_dist < state.het_rep[self.num_sensing:self.num_sensing+self.num_capturing, 1, None] # compare to capture radii per agent
+        # update tagged landmarks (if landmark tagged, mark as tagged if not already tagged)
+        tag_pos = state.p_pos[self.num_sensing:self.num_sensing+self.num_tagging, :2]  # get x, y of only tagging agents
+        tag_dist = jnp.linalg.norm(tag_pos[:, None] - landmark_pos[None, :], axis=-1)    # get dist from all tagging agents to all landmarks
+        tagged = tag_dist < state.het_rep[self.num_sensing:self.num_sensing+self.num_tagging, 1, None] # compare to tag radii per agent
 
-        state = state.replace(prey_sensed=jnp.logical_or(state.prey_sensed, sensed.any(axis=0)))
-        state = state.replace(prey_captured=jnp.logical_or(state.prey_captured, captured.any(axis=0)))
+        state = state.replace(landmark_sensed=jnp.logical_or(state.landmark_sensed, sensed.any(axis=0)))
+        state = state.replace(landmark_tagged=jnp.logical_or(state.landmark_tagged, tagged.any(axis=0)))
 
         obs = self.get_obs(state)
 
@@ -164,15 +164,15 @@ class PredatorCapturePrey(RobotariumEnv):
             step=state.step + 1,
         )
 
-        # check if all prey captured
-        all_captured = jnp.all(state.prey_captured)
+        # check if all landmarks tagged
+        all_tagged = jnp.all(state.landmark_tagged)
 
         info = {
             'collision': jnp.full((self.num_agents,), violations['collision']),
             'boundary': jnp.full((self.num_agents,), violations['boundary']),
-            'success_rate': jnp.full((self.num_agents,), all_captured),
-            'prey_sensed': jnp.full((self.num_agents,), jnp.sum(state.prey_sensed)),
-            'prey_captured': jnp.full((self.num_agents,), jnp.sum(state.prey_captured)),
+            'success_rate': jnp.full((self.num_agents,), all_tagged),
+            'landmark_sensed': jnp.full((self.num_agents,), jnp.sum(state.landmark_sensed)),
+            'landmark_tagged': jnp.full((self.num_agents,), jnp.sum(state.landmark_tagged)),
         }
 
         dones = {a: done[i] for i, a in enumerate(self.agents)}
@@ -182,7 +182,7 @@ class PredatorCapturePrey(RobotariumEnv):
     
     def rewards(self, state: State) -> Dict[str, float]:
         """
-        Assigns rewards, (shaping reward for sensing + shaping reward for capture + violation penalty).
+        Assigns rewards, (shaping reward for sensing + shaping reward for tag + violation penalty).
         
         Args:
             state: (State) environment state
@@ -191,28 +191,28 @@ class PredatorCapturePrey(RobotariumEnv):
             (Dict[str, float]) agent rewards
         """
 
-        # get sensed prey (if prey in range, mark as sensed if not already marked)
-        prey_pos = state.p_pos[self.num_agents:, :2]    # get x, y of prey
+        # get sensed landmarks (if landmark in range)
+        landmark_pos = state.p_pos[self.num_agents:, :2]    # get x, y of landmarks
         sense_pos = state.p_pos[:self.num_sensing, :2]  # get x, y of only sensing agents
-        sense_dist = jnp.linalg.norm(sense_pos[:, None] - prey_pos[None, :], axis=-1)    # get dist from all sensing agents to all prey
+        sense_dist = jnp.linalg.norm(sense_pos[:, None] - landmark_pos[None, :], axis=-1)    # get dist from all sensing agents to all landmarks
         sensed = sense_dist < state.het_rep[:self.num_sensing, 0, None] # compare to sensing radii per agent
         sensed = sensed.any(axis=0)
-        sensed = jnp.logical_or(state.prey_sensed, sensed)
-        num_sensed = jnp.sum(sensed*1 - state.prey_sensed*1) # multiplied by 1 to get conversion to int
+        sensed = jnp.logical_or(state.landmark_sensed, sensed)
+        num_sensed = jnp.sum(sensed*1 - state.landmark_sensed*1) # multiplied by 1 to get conversion to int
 
-        # update captured prey (if prey captured, mark as captured if not already captured)
-        capture_pos = state.p_pos[self.num_sensing:self.num_sensing+self.num_capturing, :2]  # get x, y of only capturing agents
-        capture_dist = jnp.linalg.norm(capture_pos[:, None] - prey_pos[None, :], axis=-1)    # get dist from all capturing agents to all prey
-        captured = capture_dist < state.het_rep[self.num_sensing:self.num_sensing+self.num_capturing, 1, None] # compare to capture radii per agent
-        captured = jnp.logical_or(state.prey_captured, captured)
-        num_captured = jnp.sum(captured*1 - state.prey_captured*1) # multiplied by 1 to get conversion to int
+        # update tagged landmarks (if landmark in range)
+        tag_pos = state.p_pos[self.num_sensing:self.num_sensing+self.num_tagging, :2]  # get x, y of only landmark agents
+        landmark_dist = jnp.linalg.norm(tag_pos[:, None] - landmark_pos[None, :], axis=-1)    # get dist from all tagging agents to all landmarks
+        tagged = landmark_dist < state.het_rep[self.num_sensing:self.num_sensing+self.num_tagging, 1, None] # compare to tag radii per agent
+        tagged = jnp.logical_or(state.landmark_tagged, tagged)
+        num_tagged = jnp.sum(tagged*1 - state.landmark_tagged*1) # multiplied by 1 to get conversion to int
 
-        # check if all prey captured, if so don't apply penalty
-        all_captured = jnp.sum(captured) == self.num_prey
-        prey_remaining = jnp.where(all_captured, 0, 1)
+        # check if all landmarks tagged, if so don't apply penalty
+        all_tagged = jnp.sum(tagged) == self.num_landmarks
+        landmark_remaining = jnp.where(all_tagged, 0, 1)
 
         # compute task reward
-        rew = (num_sensed * self.sense_shaping) + (num_captured * self.capture_shaping) + (prey_remaining * self.time_shaping)
+        rew = (num_sensed * self.sense_shaping) + (num_tagged * self.tag_shaping) + (landmark_remaining * self.time_shaping)
 
         # global penalty for collisions and boundary violation
         violations = self._get_violations(state)
@@ -224,7 +224,7 @@ class PredatorCapturePrey(RobotariumEnv):
 
     def get_obs(self, state: State) -> Dict:
         """
-        Get observation (ego_pos, other_pos, prey_pos, het_rep)
+        Get observation (ego_pos, other_pos, landmark_pos, het_rep)
 
         Args:
             state: (State) environment state
@@ -251,13 +251,13 @@ class PredatorCapturePrey(RobotariumEnv):
             ego_pos = other_pos[0]
             other_pos = other_pos[1:]
 
-            # get location of prey if sensed
-            prey_pos = jnp.where(state.prey_sensed[:, None], state.p_pos[self.num_agents:, :], -5.0)
+            # get location of landmark if sensed
+            landmark_pos = jnp.where(state.landmark_sensed[:, None], state.p_pos[self.num_agents:, :], -5.0)
 
             obs = jnp.concatenate([
                 ego_pos.flatten(),  # 3
                 other_pos.flatten(),  # num_agents-1, 3
-                prey_pos.flatten(), # num_prey, 3
+                landmark_pos.flatten(), # num_landmarks, 3
             ])
 
             return obs
@@ -278,24 +278,24 @@ class PredatorCapturePrey(RobotariumEnv):
         
         # reset markers if at first step
         if state.step == 1:
-            self.prey_markers = []
+            self.landmark_markers = []
             self.robot_markers = []
         
-        prey = state.p_pos[self.num_agents:, :2]
+        landmarks = state.p_pos[self.num_agents:, :2]
         sensing = state.p_pos[:self.num_sensing, :2]
-        capture = state.p_pos[self.num_sensing:self.num_sensing+self.num_capturing, :2]
+        tagging = state.p_pos[self.num_sensing:self.num_sensing+self.num_tagging, :2]
 
-        # add markers for prey        
-        if not self.prey_markers:
-            self.prey_markers = [
+        # add markers for landmarks        
+        if not self.landmark_markers:
+            self.landmark_markers = [
                 self.visualizer.axes.scatter(
-                    jnp.array(prey[i, 0]),
-                    jnp.array(prey[i, 1]),
+                    jnp.array(landmarks[i, 0]),
+                    jnp.array(landmarks[i, 1]),
                     marker='.',
                     s=self.determine_marker_size(.05),
                     facecolors='black',
                     zorder=-2
-                ) for i in range(self.num_prey)
+                ) for i in range(self.num_landmarks)
             ]
         
         # add markers for robots
@@ -314,32 +314,32 @@ class PredatorCapturePrey(RobotariumEnv):
                 ) for i in range(self.num_sensing)
             ]
 
-            # blue for capture
+            # blue for tagging
             self.robot_markers += [
                 self.visualizer.axes.scatter(
-                    jnp.array(capture[i, 0]),
-                    jnp.array(capture[i, 1]),
+                    jnp.array(tagging[i, 0]),
+                    jnp.array(tagging[i, 1]),
                     marker='o',
                     s=self.determine_marker_size(state.het_rep[i+self.num_sensing, 1]),
                     facecolors='none',
                     edgecolors='blue',
                     zorder=-2,
                     linewidth=1
-                ) for i in range(self.num_capturing)
+                ) for i in range(self.num_tagging)
             ]
         
         # update robot marker positions
         for i in range(self.num_sensing):
             self.robot_markers[i].set_offsets(sensing[i])
-        for i in range(self.num_capturing):
-            self.robot_markers[i+self.num_sensing].set_offsets(capture[i])
+        for i in range(self.num_tagging):
+            self.robot_markers[i+self.num_sensing].set_offsets(tagging[i])
         
-        # update prey markers
-        for i in range(self.num_prey):
-            if state.prey_sensed[i]:
-                self.prey_markers[i].set_facecolor('green')
-            if state.prey_captured[i]:
-                self.prey_markers[i].set_sizes([0, 0])
+        # update landmark markers
+        for i in range(self.num_landmarks):
+            if state.landmark_sensed[i]:
+                self.landmark_markers[i].set_facecolor('green')
+            if state.landmark_tagged[i]:
+                self.landmark_markers[i].set_sizes([0, 0])
 
 
     #-----------------------------------------
@@ -364,23 +364,23 @@ class PredatorCapturePrey(RobotariumEnv):
             spacing=0.3,
         )
 
-        # randomly generate initial poses for prey
-        prey_poses = generate_initial_conditions(
-            self.num_prey,
+        # randomly generate initial poses for landmarks
+        landmark_poses = generate_initial_conditions(
+            self.num_landmarks,
             width=ROBOTARIUM_WIDTH,
             height=ROBOTARIUM_HEIGHT,
             spacing=0.5,
         )
         
-        poses = jnp.concatenate([agent_poses, prey_poses], axis=-1)
+        poses = jnp.concatenate([agent_poses, landmark_poses], axis=-1)
 
         state = State(
             p_pos=poses.T,
             done=jnp.full((self.num_agents), False),
             step=0,
             het_rep = self.het_manager.sample(None),
-            prey_sensed = jnp.full((self.num_prey,), False),
-            prey_captured = jnp.full((self.num_prey,), False)
+            landmark_sensed = jnp.full((self.num_landmarks,), False),
+            landmark_tagged = jnp.full((self.num_landmarks,), False)
         )
 
         return state

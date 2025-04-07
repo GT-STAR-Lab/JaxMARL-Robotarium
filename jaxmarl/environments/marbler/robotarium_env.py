@@ -25,9 +25,9 @@ class State:
     step: int = None
     het_rep: chex.Array = None
 
-    # pcp fields
-    prey_sensed: chex.Array = None
-    prey_captured: chex.Array = None
+    # het discovery fields
+    landmark_sensed: chex.Array = None
+    landmark_tagged: chex.Array = None
 
     # material transport / warehouse / foraging fields
     zone1_load: int = None

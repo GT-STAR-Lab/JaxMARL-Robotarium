@@ -3,11 +3,11 @@
 "preprocess_obs": False
 
 # SCENARIO
-"scenario": "PredatorCapturePrey"
-"scenario_file": "predator_capture_prey.py"
+"scenario": "Discovery"
+"scenario_file": "discovery.py"
 "num_agents": 4
 "num_sensing": 2
-"num_capturing": 2
+"num_tagging": 2
 "max_steps": 100
 "action_type": "Discrete"
 "number_of_robots": 4
@@ -27,7 +27,7 @@ heterogeneity: {
 "output_dim": 5
 
 # DEPLOYMENT CONFIG
-"model_weights": "qmix_rnn_predator_capture.safetensors"
+"model_weights": "models/qmix_rnn_discovery.safetensors"
 "model_file": "actor.py"
 "model_class": RNNActor
 "save_gif": True
