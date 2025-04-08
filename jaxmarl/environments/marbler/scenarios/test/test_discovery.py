@@ -3,25 +3,25 @@ import jax
 import jax.numpy as jnp
 
 from jaxmarl.environments.marbler.robotarium_env import State
-from jaxmarl.environments.marbler.scenarios.predator_capture_prey import PredatorCapturePrey
+from jaxmarl.environments.marbler.scenarios.discovery import Discovery
 
 VISUALIZE = False
 
-class TestPredatorCapturePrey(unittest.TestCase):
-    """unit tests for predator_capture_prey.py"""
+class TestDiscovery(unittest.TestCase):
+    """unit tests for discovery.py"""
 
     def setUp(self):
         self.num_agents = 2
-        self.num_prey = 2
+        self.num_landmarks = 2
         self.batch_size = 10
-        self.env = PredatorCapturePrey(
+        self.env = Discovery(
             num_agents=self.num_agents,
-            num_prey=self.num_prey,
+            num_landmarks=self.num_landmarks,
             action_type="Discrete",
             max_steps=80,
             update_frequency=1,
             num_sensing=1,
-            num_capturing=1,
+            num_tagging=1,
             time_shaping=0,
             heterogeneity={
                 'type': 'capability_set',
@@ -38,9 +38,9 @@ class TestPredatorCapturePrey(unittest.TestCase):
             self.assertTrue(agent_obs.shape == (self.env.obs_dim,))
         
         self.assertTrue(~jnp.all(state.done))
-        self.assertTrue(~jnp.all(state.prey_sensed))
-        self.assertTrue(~jnp.all(state.prey_captured))
-        self.assertTrue(state.p_pos.shape == (self.num_agents + self.num_prey, 3))
+        self.assertTrue(~jnp.all(state.landmark_sensed))
+        self.assertTrue(~jnp.all(state.landmark_tagged))
+        self.assertTrue(state.p_pos.shape == (self.num_agents + self.num_landmarks, 3))
         self.assertTrue(state.step == 0)
     
     def test_step(self):
@@ -52,8 +52,8 @@ class TestPredatorCapturePrey(unittest.TestCase):
         actions = {str(f'agent_{i}'): jnp.array([0]) for i in range(self.num_agents)}
         new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
 
-        self.assertTrue(jnp.array_equal(new_state.prey_sensed, jnp.array([1, 0])))
-        self.assertTrue(jnp.array_equal(new_state.prey_captured, jnp.array([0, 1])))
+        self.assertTrue(jnp.array_equal(new_state.landmark_sensed, jnp.array([1, 0])))
+        self.assertTrue(jnp.array_equal(new_state.landmark_tagged, jnp.array([0, 1])))
         
         for i in range(self.num_agents):
             self.assertFalse(dones[f'agent_{i}'])
@@ -61,7 +61,7 @@ class TestPredatorCapturePrey(unittest.TestCase):
     def test_reward(self):
         _, state = self.env.reset(self.key)
 
-        # sense and capture
+        # sense and tag
         p_pos = jnp.array([[-0.5, 0, 0], [0.5, 0, 0], [-0.5, 0, 0], [0.5, 0, 0]])
         state = state.replace(
             p_pos = p_pos
@@ -80,7 +80,7 @@ class TestPredatorCapturePrey(unittest.TestCase):
         self.assertEqual(rewards['agent_0'], 1)
         self.assertEqual(rewards['agent_1'], 1)
 
-        # only capture
+        # only tag
         p_pos = jnp.array([[-0.5, 0, 0], [0.5, 0, 0], [0, 0, 0], [0.5, 0, 0]])
         state = state.replace(
             p_pos = p_pos
@@ -92,11 +92,11 @@ class TestPredatorCapturePrey(unittest.TestCase):
     def test_get_obs(self):
         _, state = self.env.reset(self.key)
 
-        # one sensed, none captured
+        # one sensed, none tagged
         p_pos = jnp.array([[-0.5, 0, 0], [0.5, 0, 0], [-0.5, 0, 0], [0, 0, 0]])
         state = state.replace(
             p_pos = p_pos,
-            prey_sensed = jnp.array([True, False])
+            landmark_sensed = jnp.array([True, False])
         )
         obs = self.env.get_obs(state)
         self.assertEqual(len(obs), self.num_agents)
@@ -116,20 +116,20 @@ class TestPredatorCapturePrey(unittest.TestCase):
     def test_initialize_robotarium_state(self):
         state = self.env.initialize_robotarium_state(self.key)
         self.assertTrue(~jnp.all(state.done))
-        self.assertTrue(~jnp.all(state.prey_sensed))
-        self.assertTrue(~jnp.all(state.prey_captured))
-        self.assertTrue(state.p_pos.shape == (self.num_agents + self.num_prey, 3))
+        self.assertTrue(~jnp.all(state.landmark_sensed))
+        self.assertTrue(~jnp.all(state.landmark_tagged))
+        self.assertTrue(state.p_pos.shape == (self.num_agents + self.num_landmarks, 3))
         self.assertTrue(state.step == 0)
     
     def test_batched_rollout(self):
-        self.env = PredatorCapturePrey(
+        self.env = Discovery(
             num_agents=self.num_agents,
-            num_prey=self.num_prey,
+            num_landmarks=self.num_landmarks,
             action_type="Discrete",
             max_steps=80,
             update_frequency=1,
             num_sensing=1,
-            num_capturing=1,
+            num_tagging=1,
             heterogeneity={
                 'type': 'capability_set',
                 'obs_type': 'full_capability_set',
@@ -175,7 +175,7 @@ class TestPredatorCapturePrey(unittest.TestCase):
             render_batch = render_batch.replace(**fields)
             frames = self.env.render(render_batch, seed_index=0, env_index=0)
             frames[0].save(
-                'jaxmarl/environments/marbler/scenarios/test/pcp.gif',
+                'jaxmarl/environments/marbler/scenarios/test/discovery.gif',
                 save_all=True,
                 append_images=frames[1:],
                 duration=100,

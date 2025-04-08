@@ -29,12 +29,13 @@ from .environments import (
     CoinGame,
     JaxNav,
     Navigation,
-    PredatorCapturePrey,
+    Discovery,
     MaterialTransport,
     Warehouse,
     ArcticTransport,
     Foraging,
-    RWARE
+    RWARE,
+    PredatorPrey
 )
 
 
@@ -124,8 +125,8 @@ def make(env_id: str, **env_kwargs):
     # 10. Marbler
     elif env_id == "navigation":
         env = Navigation(**env_kwargs)
-    elif env_id == "predator_capture_prey":
-        env = PredatorCapturePrey(**env_kwargs)
+    elif env_id == "discovery":
+        env = Discovery(**env_kwargs)
     elif env_id == "material_transport":
         env = MaterialTransport(**env_kwargs)
     elif env_id == "warehouse":
@@ -136,6 +137,8 @@ def make(env_id: str, **env_kwargs):
         env = Foraging(**env_kwargs)
     elif env_id == "rware":
         env = RWARE(**env_kwargs)
+    elif env_id == "predator_prey":
+        env = PredatorPrey(**env_kwargs)
 
     return env
 
@@ -170,10 +173,11 @@ registered_envs = [
     "coin_game",
     "jaxnav",
     "navigation",
-    "predator_capture_prey",
+    "discovery",
     "material_transport",
     "warehouse",
     "arctic_transport",
     "foraging",
     "rware",
+    "predator_prey"
 ]

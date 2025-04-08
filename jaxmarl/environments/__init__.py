@@ -22,4 +22,4 @@ from .hanabi import Hanabi
 from .storm import InTheGrid, InTheGrid_2p, InTheMatrix
 from .coin_game import CoinGame
 from .jaxnav import JaxNav
-from .marbler import Navigation, PredatorCapturePrey, MaterialTransport, Warehouse, ArcticTransport, Foraging, RWARE
+from .marbler import Navigation, Discovery, MaterialTransport, Warehouse, ArcticTransport, Foraging, RWARE, PredatorPrey

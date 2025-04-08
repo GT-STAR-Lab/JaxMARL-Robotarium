@@ -21,11 +21,11 @@
 "GAMMA": 0.9
 
 # ENV
-"ENV_NAME": "predator_capture_prey"
+"ENV_NAME": "discovery"
 "ENV_KWARGS": {
   "num_agents": 4,
   "num_sensing": 2,
-  "num_capturing": 2,
+  "num_tagging": 2,
   "max_steps": 100,
   "action_type": "Discrete",
   "robotarium": {
@@ -43,7 +43,7 @@
     "values": [[0.45, 0], [0.45, 0], [0, 0.25], [0, 0.25]],
     "sample": False,
   },
-  "update_frequency": 15
+  "update_frequency": 30
 }
 
 # evaluate

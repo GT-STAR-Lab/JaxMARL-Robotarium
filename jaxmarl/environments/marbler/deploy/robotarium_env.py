@@ -21,9 +21,9 @@ class State:
     step: int = None
     het_rep: jnp.ndarray = None
 
-    # pcp fields
-    prey_sensed: jnp.ndarray = None
-    prey_captured: jnp.ndarray = None
+    # discovery fields
+    landmark_sensed: jnp.ndarray = None
+    landmark_tagged: jnp.ndarray = None
 
     # material transport / warehouse / foraging fields
     zone1_load: int = None
