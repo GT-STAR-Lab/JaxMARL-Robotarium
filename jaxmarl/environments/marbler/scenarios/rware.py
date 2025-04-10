@@ -17,6 +17,9 @@ class RWARE(RobotariumEnv):
         self.queue_length = self.num_cells * 4 # this is to simulate random requests
         self.pickup_radius = 0.2
 
+        # Zone dimensions
+        self.zone_width = 0.5
+
         if self.backend == 'jax':
             super().__init__(num_agents, max_steps, **kwargs)
         else:
@@ -36,9 +39,6 @@ class RWARE(RobotariumEnv):
             self.observation_spaces = {
                 i: Box(-jnp.inf, jnp.inf, (self.obs_dim,)) for i in self.agents
             }
-        
-        # Zone dimensions
-        self.zone_width = 0.5
         
         # Visualization
         self.robot_markers = []
@@ -218,6 +218,7 @@ class RWARE(RobotariumEnv):
 
         # update requests by randomly sampling available shelves
         p = jnp.array([jnp.where(jnp.isin(i, request), 0, 1) for i in range(self.num_cells)])
+        p = jnp.where(jnp.sum(p) == 0, jnp.ones_like(p) / self.num_agents, p / jnp.sum(p))
         key, key_r = jax.random.split(key)
         random_request = jax.random.choice(key_r, jnp.arange(self.num_cells,), (self.num_agents,), p=p, replace=False)
         request = jnp.where(request < 0, random_request, request).astype(int)
@@ -464,3 +465,52 @@ class RWARE(RobotariumEnv):
 
         # update label for requests
         self.request_label.set_text(f"Request: {state.request}")
+
+    #-----------------------------------------
+    # Deployment Specific Functions
+    #-----------------------------------------
+    def initialize_robotarium_state(self, seed: int = 0):
+        """
+        Sets initial conditions for robotarium
+
+        Args:
+            seed: (int) seed for random functions
+        
+        Returns:
+            (jnp.ndarray) initial poses (3xN) for robots
+        """
+
+        # set agents to always start lined up on bottom of env
+        bounds = jnp.array([-1.6, -1, 3.2, 2]) # lower left point / width/ height
+        x_poses = jnp.linspace(bounds[0] + 0.5, bounds[0] + bounds[2] - 0.5, self.num_agents)
+        y_poses = jnp.full((self.num_agents, ), (- bounds[3] // 2) + 0.25)
+        rad = jnp.full(self.num_agents, jnp.pi/2)
+        agent_poses = jnp.stack((x_poses, y_poses, rad))
+
+        # set poses of shelves to be centered in free space, evenly space along x axis 
+        x_poses = jnp.linspace(bounds[0] + 0.5, bounds[0] + bounds[2] - 2*self.zone_width, self.num_cells // 2)
+        x_poses = jnp.concatenate((x_poses, x_poses))
+        y_poses = jnp.concatenate(
+            [jnp.full((self.num_cells // 2,), 0.25), jnp.full((self.num_cells // 2,), -0.25)]
+        )
+        rad = jnp.zeros((self.num_cells,))
+        occupied = jnp.arange(self.num_cells)
+
+        shelf_poses = jnp.stack((x_poses, y_poses, rad))
+        shelf_grid = jnp.stack((x_poses, y_poses, occupied))
+
+        poses = jnp.concatenate((agent_poses, shelf_poses), axis=-1)
+
+        # choose unique starting requested shelves
+        request = jnp.random.choice(jnp.arange(self.num_cells), (self.num_agents,), replace=False)
+
+        state = State(
+            p_pos=poses.T,
+            done=jnp.full((self.num_agents), False),
+            step=0,
+            payload=jnp.full((self.num_agents,), -1), # track shelves carried by agents, -1 indicates no shelf carried, # use payload to track shelf weights
+            grid=shelf_grid.T, # use grid to track shelf storage locations, 
+            request=request,
+            zone1_load=0,
+        )
+        return state

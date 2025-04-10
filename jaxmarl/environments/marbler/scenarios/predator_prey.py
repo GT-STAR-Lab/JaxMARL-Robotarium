@@ -40,6 +40,7 @@ class PredatorPrey(RobotariumEnv):
         # Visualization
         self.robot_markers = []
         self.prey_marker = None
+        self.prev_tag_count = 0
 
     def reset(self, key) -> Tuple[Dict, State]:
         """
@@ -284,7 +285,7 @@ class PredatorPrey(RobotariumEnv):
         if state.step == 1:
             self.prey_marker = None
             self.robot_markers = []
-            prev_tag_count = 0
+            self.prev_tag_count = 0
         
         robots = state.p_pos[:self.num_agents, :2]
         prey = state.p_pos[self.num_agents, :2].flatten()
@@ -324,9 +325,9 @@ class PredatorPrey(RobotariumEnv):
         self.prey_marker.set_offsets(prey)
         
         # if tag count grew, update prey marker color
-        if state.landmark_tagged > prev_tag_count:
+        if state.landmark_tagged > self.prev_tag_count:
             self.prey_marker.set_facecolor('red')
-            prev_tag_count = state.landmark_tagged
+            self.prev_tag_count = state.landmark_tagged
         else:
             self.prey_marker.set_facecolor('green')
 
