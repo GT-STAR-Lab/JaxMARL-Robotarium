@@ -35,7 +35,7 @@
     "controller": "clf_uni_position",
     "barrier_fn": "robust_barriers",
   },
-  "update_frequency": 15
+  "update_frequency": 30
 }
 
 # evaluate

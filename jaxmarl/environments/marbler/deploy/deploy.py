@@ -107,6 +107,36 @@ def replace_dynamic_slice_in_file(file_path):
     with open(file_path, "w") as f:
         f.writelines(new_lines)
 
+def replace_jax_choice_with_np(file_path):
+    with open(file_path, "r") as f:
+        content = f.read()
+
+    # Match jax.random.choice(key, <rest of args>) — capturing only the rest
+    pattern = re.compile(
+        r"jax\.random\.choice\(\s*[^,]+,\s*(.+?)\)",
+        re.DOTALL
+    )
+
+    # Replace with np.random.choice(<rest of args>)
+    new_content = pattern.sub(r"np.random.choice(\1)", content)
+
+    with open(file_path, "w") as f:
+        f.write(new_content)
+
+def comment_out_jax_random_split(file_path):
+    with open(file_path, "r") as f:
+        lines = f.readlines()
+
+    new_lines = []
+    for line in lines:
+        if "jax.random.split" in line and not line.strip().startswith("#"):
+            new_lines.append("# " + line)
+        else:
+            new_lines.append(line)
+
+    with open(file_path, "w") as f:
+        f.writelines(new_lines)
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--name', type=str, default='experiment', help='folder to save deployment files')
@@ -158,6 +188,12 @@ if __name__ == "__main__":
 
     # update scenario file to not use dynamic slice
     replace_dynamic_slice_in_file(scenario_output_path)
+
+    # update scenario file to convert jax.lax.random.choice
+    replace_jax_choice_with_np(scenario_output_path)
+
+    # comment out any key splitting logic
+    comment_out_jax_random_split(scenario_output_path)
 
     constants_path = os.path.join(
         "/".join(module_dir.split("/")[:-1]),
