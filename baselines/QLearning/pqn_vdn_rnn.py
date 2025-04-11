@@ -178,12 +178,12 @@ def make_train(config, env):
         # INIT ENV
         rng, _rng = jax.random.split(rng)
         wrapped_env = CTRolloutManager(
-            env, batch_size=config["NUM_ENVS"], preprocess_obs=True
+            env, batch_size=config["NUM_ENVS"], preprocess_obs=False
         )
         test_env = CTRolloutManager(
             env,
             batch_size=config["TEST_NUM_ENVS"],
-            preprocess_obs=True,
+            preprocess_obs=False,
         )  # batched env for testing (has different batch size)
 
         # INIT NETWORK AND OPTIMIZER
@@ -705,8 +705,9 @@ def single_run(config):
     if config.get("SAVE_PATH", None) is not None:
         from jaxmarl.wrappers.baselines import save_params
 
+        save_dir = os.path.join(config["SAVE_PATH"], alg_name, env_name, f"{config['HIDDEN_SIZE']}")
+
         model_state = outs["runner_state"][0]
-        save_dir = os.path.join(config["SAVE_PATH"], env_name)
         os.makedirs(save_dir, exist_ok=True)
         OmegaConf.save(
             config,
@@ -722,6 +723,9 @@ def single_run(config):
                 f'{alg_name}_{env_name}_seed{config["SEED"]}_vmap{i}.safetensors',
             )
             save_params(params, save_path)
+    
+    # force multiruns to finish correctly
+    wandb.finish()
 
 
 def tune(default_config):

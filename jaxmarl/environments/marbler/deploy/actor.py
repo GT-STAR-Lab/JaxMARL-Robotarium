@@ -29,7 +29,7 @@ class GRUCell(nn.Module):
         
         return h_t
 
-class RNNActor(nn.Module):
+class RNNActorQMix(nn.Module):
     def __init__(self, input_dim, output_dim, hidden_dim):
         super().__init__()
 
@@ -46,5 +46,34 @@ class RNNActor(nn.Module):
         embedding = torch.relu(embedding)
         hidden = self.GRUCell_0(embedding, hidden)
         output = self.Dense_1(hidden)
+
+        return output, hidden
+    
+class RNNActorPQN(nn.Module):
+    def __init__(self, input_dim, output_dim, hidden_dim):
+        super().__init__()
+
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+        self.hidden_dim = hidden_dim
+
+        self.normalize = nn.LayerNorm(hidden_dim)
+
+        self.Dense_0 = nn.Linear(input_dim, hidden_dim)
+        self.Dense_1 = nn.Linear(hidden_dim, hidden_dim)
+        self.GRUCell_0 = GRUCell(hidden_dim, hidden_dim)
+        self.Dense_2 = nn.Linear(hidden_dim, output_dim)
+
+    def forward(self, input, hidden): 
+        embedding = self.Dense_0(input)
+        embedding = self.normalize(embedding)
+        embedding = torch.relu(embedding)
+        
+        embedding = self.Dense_1(embedding)
+        embedding = self.normalize(embedding)
+        embedding = torch.relu(embedding)
+
+        hidden = self.GRUCell_0(embedding, hidden)
+        output = self.Dense_2(hidden)
 
         return output, hidden

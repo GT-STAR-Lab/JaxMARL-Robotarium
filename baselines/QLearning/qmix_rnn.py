@@ -704,7 +704,7 @@ def single_run(config):
     outs = jax.block_until_ready(train_vjit(rngs))
 
     # save gifs
-    save_dir = os.path.join(config["SAVE_PATH"], env_name)
+    save_dir = os.path.join(config["SAVE_PATH"], alg_name, env_name, f"{config['HIDDEN_SIZE']}")
     os.makedirs(save_dir, exist_ok=True)
     test_states = outs["test_state"]
     if config.get("VISUALIZE", False):
