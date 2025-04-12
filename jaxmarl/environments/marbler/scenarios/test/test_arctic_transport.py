@@ -54,6 +54,34 @@ class TestArcticTransport(unittest.TestCase):
         new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
         for i in range(self.num_agents):
             self.assertTrue(infos['success_rate'][i] == 1)
+
+    def test_info(self):
+        _, state = self.env.reset(self.key)
+        state = state.replace(
+            p_pos = jnp.array([[1.25, 0.8, 0], [-1.25, 0.8, 0], [0.5, 0.8, 0], [-0.5, 0.8, 0]]),
+        )
+        actions = {str(f'agent_{i}'): jnp.array([0]) for i in range(self.num_agents)}
+        new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
+
+        self.assertTrue(jnp.all(infos['success_rate']))
+
+        _, state = self.env.reset(self.key)
+        state = state.replace(
+            p_pos = jnp.array([[1.25, 0.8, 0], [-1.25, 0.8, 0], [0.5, 0.74, 0], [-0.5, 0.74, 0]]),
+        )
+        actions = {str(f'agent_{i}'): jnp.array([0]) for i in range(self.num_agents)}
+        new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
+
+        self.assertFalse(jnp.all(infos['success_rate']))
+
+        _, state = self.env.reset(self.key)
+        state = state.replace(
+            p_pos = jnp.array([[1.25, 0.5, 0], [-1.25, 0.5, 0], [0.5, 0.8, 0], [-0.5, 0.8, 0]]),
+        )
+        actions = {str(f'agent_{i}'): jnp.array([0]) for i in range(self.num_agents)}
+        new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
+
+        self.assertTrue(jnp.all(infos['success_rate']))
     
     def test_decode_discrete_action(self):
         _, state = self.env.reset(self.key)
@@ -67,9 +95,20 @@ class TestArcticTransport(unittest.TestCase):
         actions = {str(f'agent_{i}'): self.env._decode_discrete_action(i, 1, state) for i in range(self.num_agents)}
 
         # check that action for agents 2 and 3 is suboptimal
-        self.assertTrue(jnp.array_equal(actions['agent_2'][1], 0.01))
-        self.assertTrue(jnp.array_equal(actions['agent_3'][1], 0.01))
+        self.assertTrue(jnp.array_equal(actions['agent_2'][1], 0.1))
+        self.assertTrue(jnp.array_equal(actions['agent_3'][1], 0.1))
         
+        # place agents on optimal cells
+        state = state.replace(
+            p_pos = jnp.array([[1.25, 0.8, 0], [-1.25, 0.8, 0], [0.5, 0, 0], [-0.5, 0, 0]]),
+            grid = grid,
+        )
+        actions = {str(f'agent_{i}'): self.env._decode_discrete_action(i, 1, state) for i in range(self.num_agents)}
+
+        # check that action for agents 2 and 3 is optimal
+        self.assertTrue(jnp.array_equal(actions['agent_2'][1], 0.3))
+        self.assertTrue(jnp.array_equal(actions['agent_3'][1], 0.3))
+
     def test_reward(self):
         _, state = self.env.reset(self.key)
         state = state.replace(
@@ -89,6 +128,29 @@ class TestArcticTransport(unittest.TestCase):
 
         self.assertEqual(rewards['agent_0'], 0.0)
         self.assertEqual(rewards['agent_1'], 0.0)
+
+        self.env.time_shaping = -1
+        self.env.dist_shaping = 0
+        state = new_state
+        state = state.replace(
+            p_pos = jnp.array([[1.25, 0.8, 0], [-1.25, 0.8, 0], [0.5, 0.8, 0], [-0.5, 0.8, 0]]),
+        )
+        actions = {str(f'agent_{i}'): jnp.array([0]) for i in range(self.num_agents)}
+        new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
+
+        self.assertEqual(rewards['agent_0'], 0.0)
+        self.assertEqual(rewards['agent_1'], 0.0)
+
+        state = new_state
+        state = state.replace(
+            p_pos = jnp.array([[1.25, 0.8, 0], [-1.25, 0.8, 0], [0.5, 0.74, 0], [-0.5, 0.74, 0]]),
+        )
+        actions = {str(f'agent_{i}'): jnp.array([0]) for i in range(self.num_agents)}
+        new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
+
+        self.assertEqual(rewards['agent_0'], -1)
+        self.assertEqual(rewards['agent_1'], -1)
+
     
     def test_get_obs(self):
         _, state = self.env.reset(self.key)

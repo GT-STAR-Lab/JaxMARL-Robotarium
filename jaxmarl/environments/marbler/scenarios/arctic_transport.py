@@ -201,8 +201,8 @@ class ArcticTransport(RobotariumEnv):
         agent_type = jnp.argmax(state.het_rep[a_idx])
 
         # set step size
-        step = jnp.where(agent_type == terrain_type, 0.1, 0.01)
-        step = jnp.where(jnp.logical_and(agent_type != 0, terrain_type % 3 == 0), 0.075, step)
+        step = jnp.where(agent_type == terrain_type, 0.3, 0.1)
+        step = jnp.where(jnp.logical_and(agent_type != 0, terrain_type % 3 == 0), 0.2, step)
         step = jnp.where(agent_type == 0, 0.2, step)
 
         candidate_goals = state.p_pos[a_idx,:2] + (goals[action] * step)
@@ -230,8 +230,8 @@ class ArcticTransport(RobotariumEnv):
         agent_type = jnp.argmax(state.het_rep[a_idx])
 
         # set step size
-        step = jnp.where(agent_type == terrain_type, 0.1, 0.01)
-        step = jnp.where(jnp.logical_and(agent_type != 0, terrain_type % 3 == 0), 0.075, step)
+        step = jnp.where(agent_type == terrain_type, 0.3, 0.1)
+        step = jnp.where(jnp.logical_and(agent_type != 0, terrain_type % 3 == 0), 0.2, step)
         step = jnp.where(agent_type == 0, 0.2, step)
 
         return action * step
@@ -249,14 +249,14 @@ class ArcticTransport(RobotariumEnv):
 
         # check non-drone distance from goal
         bounds = jnp.array(self.robotarium.boundaries)
-        dist_rew =  jnp.sum(state.p_pos[2:self.num_agents, 1] - (bounds[3] / 8)*3)
-        dist_rew = jnp.where(dist_rew > 0, 0, -dist_rew)
+        dist = state.p_pos[2:self.num_agents, 1] - (bounds[3] / 8)*3
+        dist_rew =  jnp.abs(jnp.sum(jnp.where(dist > 0, 0, dist)))
 
         # check for all agents on goal
         all_reached = jnp.all(state.p_pos[2:self.num_agents, 1] > (bounds[3] / 8)*3)
 
         # compute task reward
-        rew = (dist_rew * self.dist_shaping) + (all_reached * self.time_shaping)
+        rew = (dist_rew * self.dist_shaping) + (~all_reached * self.time_shaping)
 
         # global penalty for collisions and boundary violation
         violations = self._get_violations(state)
@@ -310,8 +310,8 @@ class ArcticTransport(RobotariumEnv):
 
             obs = jnp.concatenate([
                 ego_pos.flatten(),  # 3
-                agent_cell_types[aidx].reshape(1,),  # 1
                 other_pos.flatten(),  # num_agents-1, 3
+                agent_cell_types[aidx].reshape(1,),  # 1
                 drone1_obs.flatten(),  # 3, 3
                 drone2_obs.flatten(),  # 3, 3
             ])
