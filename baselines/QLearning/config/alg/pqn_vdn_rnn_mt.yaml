@@ -3,7 +3,7 @@
 "NUM_ENVS": 256
 "NUM_STEPS": 71
 "MEMORY_WINDOW": 0 # extra steps in the rnn horizon from previous episodes 
-"HIDDEN_SIZE": 256
+"HIDDEN_SIZE": 512
 "NUM_LAYERS": 2
 "NORM_INPUTS": False
 "NORM_TYPE": "layer_norm"

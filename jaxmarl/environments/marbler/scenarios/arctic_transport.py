@@ -349,7 +349,7 @@ class ArcticTransport(RobotariumEnv):
                     s=self.determine_marker_size(0.15),
                     facecolors='none',
                     edgecolors=robot_colors[i],
-                    linewidth=1
+                    linewidth=3
                 ) for i in range(self.num_agents)
             ]
         
@@ -398,7 +398,7 @@ class ArcticTransport(RobotariumEnv):
             [0.9, -0.8, 0.0],
         ])
 
-        terrain_grid = jnp.random.randint(0, 4, size=(6,12))
+        terrain_grid = jnp.random.randint(0, 3, size=(6,12))
         terrain_grid = jnp.concatenate(
             [   
                 jnp.ones((1,12)) * 3, # goal
@@ -409,7 +409,7 @@ class ArcticTransport(RobotariumEnv):
         )
 
         state = State(
-            p_pos=poses.T,
+            p_pos=poses,
             done=jnp.full((self.num_agents), False),
             step=0,
             het_rep = self.het_manager.sample(None),

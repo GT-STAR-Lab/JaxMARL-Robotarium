@@ -8,7 +8,7 @@
 "ENTITY": "star-lab-gt"
 "PROJECT": "jax-marbler"
 "WANDB_MODE": "online"
-"WANDB_LOG_ALL_SEEDS": False # will log separately the vmapped seeds
+"WANDB_LOG_ALL_SEEDS": True # will log separately the vmapped seeds
 
 # where to save the params (if None, will not save)
 "SAVE_PATH": "baselines/QLearning/artifacts"

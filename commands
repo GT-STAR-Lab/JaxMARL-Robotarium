@@ -1,0 +1,5 @@
+# train all qmix
+python baselines/QLearning/qmix_rnn.py -m +alg=ql_rnn_at,ql_rnn_discovery,ql_rnn_foraging,ql_rnn_mt,ql_rnn_navigation,ql_rnn_pp,ql_rnn_rware,ql_rnn_warehouse
+
+# train all pqn
+python baselines/QLearning/pqn_vdn_rnn.py -m +alg=pqn_vdn_rnn_at,pqn_vdn_rnn_discovery,pqn_vdn_rnn_foraging,pqn_vdn_rnn_mt,pqn_vdn_rnn_navigation,pqn_vdn_rnn_pp,pqn_vdn_rnn_rware,pqn_vdn_rnn_warehouse

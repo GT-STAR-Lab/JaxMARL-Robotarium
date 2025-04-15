@@ -310,7 +310,7 @@ class Discovery(RobotariumEnv):
                     facecolors='none',
                     edgecolors='green',
                     zorder=-2,
-                    linewidth=1
+                    linewidth=3
                 ) for i in range(self.num_sensing)
             ]
 
@@ -324,7 +324,7 @@ class Discovery(RobotariumEnv):
                     facecolors='none',
                     edgecolors='blue',
                     zorder=-2,
-                    linewidth=1
+                    linewidth=3
                 ) for i in range(self.num_tagging)
             ]
         

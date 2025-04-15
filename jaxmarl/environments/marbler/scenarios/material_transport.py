@@ -349,7 +349,7 @@ class MaterialTransport(RobotariumEnv):
                     s=self.determine_marker_size(state.het_rep[i, 1] * 0.02),
                     facecolors='none',
                     edgecolors='black',
-                    linewidth=1
+                    linewidth=3
                 ) for i in range(self.num_agents)
             ]
         
@@ -361,7 +361,7 @@ class MaterialTransport(RobotariumEnv):
         if not self.zone1_marker:
             self.zone1_marker = self.visualizer.axes.scatter(
                     0, 0, s=self.determine_marker_size(self.zone1_radius),
-                    marker='o', facecolors='none', edgecolors='orange', linewidth=1, zorder=-2
+                    marker='o', facecolors='none', edgecolors='orange', linewidth=3, zorder=-2
             )
         if not self.zone2_marker:
             self.zone2_marker = self.visualizer.axes.add_patch(

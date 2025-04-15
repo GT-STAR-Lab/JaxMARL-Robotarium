@@ -96,6 +96,14 @@ def plot_metric_over_wall_time(df, title, name, metric, swap_axes=False, legend=
     # Now filter
     df_clipped = df[df['_runtime'] <= min_max_wall_time]
 
+    if metric == "return":
+        df_clipped = (
+            df_clipped
+            .sort_values(['_runtime'])
+            .groupby('run_path', group_keys=False)
+            .apply(lambda g: g.assign(**{metric: g[metric].rolling(25, min_periods=1).mean()}))
+        )
+
     # Plot
     plt.figure(figsize=(8,6))
     plt.rc('font', size=18)
@@ -129,7 +137,7 @@ if __name__ == "__main__":
         df = get_from_wandb(name, run_paths, metrics)
 
     plot_metric_over_wall_time(df, title=title, name=f"{name}-return", metric="return", legend=False)
-    plot_metric_over_wall_time(df, title=title, name=f"{name}-timestep", metric="timestep", swap_axes=True, legend=False)
+    plot_metric_over_wall_time(df, title=title, name=f"{name}-timestep", metric="timestep", legend=False)
 
     # MT
     run_paths = [
@@ -144,7 +152,7 @@ if __name__ == "__main__":
         df = get_from_wandb(name, run_paths, metrics)
 
     plot_metric_over_wall_time(df, title=title, name=f"{name}-return", metric="return", legend=False)
-    plot_metric_over_wall_time(df, title=title, name=f"{name}-timestep", metric="timestep", swap_axes=True, legend=False)
+    plot_metric_over_wall_time(df, title=title, name=f"{name}-timestep", metric="timestep", legend=False)
 
     # WAREHOUSE
     run_paths = [
@@ -159,7 +167,7 @@ if __name__ == "__main__":
         df = get_from_wandb(name, run_paths, metrics)
 
     plot_metric_over_wall_time(df, title=title, name=f"{name}-return", metric="return", legend=False)
-    plot_metric_over_wall_time(df, title=title, name=f"{name}-timestep", metric="timestep", swap_axes=True, legend=False)
+    plot_metric_over_wall_time(df, title=title, name=f"{name}-timestep", metric="timestep", legend=False)
 
     # ARCTIC TRANSPORT
     run_paths = [
@@ -174,4 +182,4 @@ if __name__ == "__main__":
         df = get_from_wandb(name, run_paths, metrics)
 
     plot_metric_over_wall_time(df, title=title, name=f"{name}-return", metric="return", legend=True)
-    plot_metric_over_wall_time(df, title=title, name=f"{name}-timestep", metric="timestep", swap_axes=True, legend=False)
+    plot_metric_over_wall_time(df, title=title, name=f"{name}-timestep", metric="timestep", legend=False)

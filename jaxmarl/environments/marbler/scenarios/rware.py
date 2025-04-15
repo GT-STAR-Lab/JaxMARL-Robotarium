@@ -379,7 +379,7 @@ class RWARE(RobotariumEnv):
                     facecolors='none',
                     edgecolors='black',
                     zorder=-2,
-                    linewidth=1
+                    linewidth=3
                 ) for i in range(self.num_agents)
             ]
 

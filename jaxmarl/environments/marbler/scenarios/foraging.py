@@ -284,7 +284,7 @@ class Foraging(RobotariumEnv):
                     facecolors='none',
                     edgecolors='green',
                     zorder=-2,
-                    linewidth=1
+                    linewidth=3
                 ) for i in range(self.num_agents)
             ]
 

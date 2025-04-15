@@ -689,6 +689,7 @@ def single_run(config):
             alg_name.upper(),
             env_name.upper(),
             f"jax_{jax.__version__}",
+            'final-pqn'
         ],
         name=f"{alg_name}_{env_name}",
         config=config,
@@ -705,7 +706,7 @@ def single_run(config):
     if config.get("SAVE_PATH", None) is not None:
         from jaxmarl.wrappers.baselines import save_params
 
-        save_dir = os.path.join(config["SAVE_PATH"], alg_name, env_name, f"{config['HIDDEN_SIZE']}")
+        save_dir = os.path.join(config["SAVE_PATH"], f"{alg_name}-final", env_name, f"{config['HIDDEN_SIZE']}")
 
         model_state = outs["runner_state"][0]
         os.makedirs(save_dir, exist_ok=True)
@@ -720,7 +721,7 @@ def single_run(config):
             params = jax.tree.map(lambda x: x[i], model_state.params)
             save_path = os.path.join(
                 save_dir,
-                f'{alg_name}_{env_name}_seed{config["SEED"]}_vmap{i}.safetensors',
+                f'{alg_name}_{env_name}_seed{config["SEED"]}_vmap{i}_rng{int(rng[0])}.safetensors',
             )
             save_params(params, save_path)
     

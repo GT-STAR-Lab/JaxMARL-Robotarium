@@ -6,7 +6,7 @@
 "scenario": "ArcticTransport"
 "scenario_file": "arctic_transport.py"
 "num_agents": 4
-"max_steps": 70
+"max_steps": 100
 "action_type": "Discrete"
 "number_of_robots": 4
 "controller": "clf_uni_position"
@@ -25,7 +25,7 @@
 "output_dim": 5
 
 # DEPLOYMENT CONFIG
-"model_weights": "qmix_rnn_arctic_transport.safetensors"
+"model_weights": "models/qmix/qmix_rnn_arctic_transport.safetensors"
 "model_file": "actor.py"
-"model_class": RNNActor
+"model_class": RNNActorQMix
 "save_gif": True

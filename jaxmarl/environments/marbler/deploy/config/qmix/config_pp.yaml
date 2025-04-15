@@ -15,11 +15,11 @@
 
 # MODEL CONFIG
 "input_dim": 12
-"hidden_dim": 256
+"hidden_dim": 512
 "output_dim": 5
 
 # DEPLOYMENT CONFIG
-"model_weights": "models/qmix_rnn_predator_prey.safetensors"
+"model_weights": "models/qmix/qmix_rnn_predator_prey.safetensors"
 "model_file": "actor.py"
-"model_class": RNNActor
+"model_class": RNNActorQMix
 "save_gif": True

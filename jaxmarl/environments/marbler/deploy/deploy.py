@@ -40,7 +40,7 @@ def flax_to_torch(flax_state_dict, torch_state_dict):
     for name, param in flax_state_dict.items():
         param = np.array(param)
         # skip all non agent parameters
-        if 'agent' in flax_state_dict.keys() and 'agent' not in name:
+        if any('agent' in key for key in flax_state_dict.keys()) and 'agent' not in name:
             continue
         
         if 'Dense' in name:

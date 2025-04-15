@@ -275,7 +275,7 @@ class Warehouse(RobotariumEnv):
                     s=self.determine_marker_size(0.15),
                     facecolors='none',
                     edgecolors='green' if state.het_rep[i, 0] else 'red',
-                    linewidth=1
+                    linewidth=3
                 ) for i in range(self.num_agents)
             ]
         

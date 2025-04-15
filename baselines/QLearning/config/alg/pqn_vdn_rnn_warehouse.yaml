@@ -1,6 +1,6 @@
 # pqn_vdn_ff is suggested for MPE (faster and good enough), but pqn_vdn_rnn is also available
 "TOTAL_TIMESTEPS": 3e6
-"NUM_ENVS": 256
+"NUM_ENVS": 128
 "NUM_STEPS": 71
 "MEMORY_WINDOW": 0 # extra steps in the rnn horizon from previous episodes 
 "HIDDEN_SIZE": 256
