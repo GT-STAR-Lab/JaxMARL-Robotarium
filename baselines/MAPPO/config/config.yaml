@@ -1,0 +1,14 @@
+"SEED": 0
+"NUM_SEEDS": 1
+
+# wandb params
+"ENTITY": "star-lab-gt"
+"PROJECT": "jax-marbler"
+"WANDB_MODE": "online"
+"WANDB_LOG_ALL_SEEDS": True # will log separately the vmapped seeds
+
+"NUM_TEST_ENVS": 64
+"TEST_INTERVAL": 0.05
+
+# where to save the params (if None, will not save)
+"SAVE_PATH": "baselines/MAPPO/artifacts"

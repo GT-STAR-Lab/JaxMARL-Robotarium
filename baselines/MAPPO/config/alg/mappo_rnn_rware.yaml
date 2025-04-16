@@ -1,0 +1,35 @@
+"LR": 2e-3
+"NUM_ENVS": 16 
+"NUM_STEPS": 101 
+"TOTAL_TIMESTEPS": 20e6
+"HIDDEN_SIZE": 128
+"UPDATE_EPOCHS": 4
+"NUM_MINIBATCHES": 4
+"GAMMA": 0.99
+"GAE_LAMBDA": 0.95
+"CLIP_EPS": 0.2
+"SCALE_CLIP_EPS": False
+"ENT_COEF": 0.01
+"VF_COEF": 0.5
+"MAX_GRAD_NORM": 0.5
+"ACTIVATION": "tanh"
+"ANNEAL_LR": True
+
+# ENV
+"ENV_NAME": "rware"
+"ENV_KWARGS": {
+  "num_agents": 3,
+  "num_cells": 6,
+  "max_steps": 100,
+  "action_type": "Discrete",
+  "robotarium": {
+    "number_of_robots": 3,
+    "show_figure": False,
+    "sim_in_real_time": False,
+  },
+  "controller": {
+    "controller": "clf_uni_position",
+    "barrier_fn": "robust_barriers",
+  },
+  "update_frequency": 60
+}

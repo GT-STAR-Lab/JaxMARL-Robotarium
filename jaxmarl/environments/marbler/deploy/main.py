@@ -59,6 +59,7 @@ if __name__ == "__main__":
         obs = torch.from_numpy(obs).to(torch.float32)
         qvals, hs = actor(obs, hs)
 
+        # since mappo is categorical, this works for both
         actions = {f'agent_{i}': jnp.argmax(qvals[i].detach().numpy()) for i in range(num_agents)}
 
         obs, state, reward, dones, info = env.step_env(None, state, actions)

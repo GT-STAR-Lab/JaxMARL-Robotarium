@@ -24,6 +24,7 @@ from jaxmarl.environments.multi_agent_env import MultiAgentEnv, State
 import wandb
 import functools
 import matplotlib.pyplot as plt
+import os
 
     
 class MPEWorldStateWrapper(JaxMARLWrapper):
@@ -102,14 +103,14 @@ class ActorRNN(nn.Module):
     def __call__(self, hidden, x):
         obs, dones = x
         embedding = nn.Dense(
-            self.config["FC_DIM_SIZE"], kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0)
+            self.config["HIDDEN_SIZE"], kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0)
         )(obs)
         embedding = nn.relu(embedding)
 
         rnn_in = (embedding, dones)
         hidden, embedding = ScannedRNN()(hidden, rnn_in)
 
-        actor_mean = nn.Dense(self.config["GRU_HIDDEN_DIM"], kernel_init=orthogonal(2), bias_init=constant(0.0))(
+        actor_mean = nn.Dense(self.config["HIDDEN_SIZE"], kernel_init=orthogonal(2), bias_init=constant(0.0))(
             embedding
         )
         actor_mean = nn.relu(actor_mean)
@@ -129,14 +130,14 @@ class CriticRNN(nn.Module):
     def __call__(self, hidden, x):
         world_state, dones = x
         embedding = nn.Dense(
-            self.config["FC_DIM_SIZE"], kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0)
+            self.config["HIDDEN_SIZE"], kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0)
         )(world_state)
         embedding = nn.relu(embedding)
         
         rnn_in = (embedding, dones)
         hidden, embedding = ScannedRNN()(hidden, rnn_in)
         
-        critic = nn.Dense(self.config["GRU_HIDDEN_DIM"], kernel_init=orthogonal(2), bias_init=constant(0.0))(
+        critic = nn.Dense(self.config["HIDDEN_SIZE"], kernel_init=orthogonal(2), bias_init=constant(0.0))(
             embedding
         )
         critic = nn.relu(critic)
@@ -202,14 +203,14 @@ def make_train(config):
             jnp.zeros((1, config["NUM_ENVS"], env.observation_space(env.agents[0]).shape[0])),
             jnp.zeros((1, config["NUM_ENVS"])),
         )
-        ac_init_hstate = ScannedRNN.initialize_carry(config["NUM_ENVS"], config["GRU_HIDDEN_DIM"])
+        ac_init_hstate = ScannedRNN.initialize_carry(config["NUM_ENVS"], config["HIDDEN_SIZE"])
         actor_network_params = actor_network.init(_rng_actor, ac_init_hstate, ac_init_x)
         
         cr_init_x = (
             jnp.zeros((1, config["NUM_ENVS"], env.world_state_size(),)),  #  + env.observation_space(env.agents[0]).shape[0]
             jnp.zeros((1, config["NUM_ENVS"])),
         )
-        cr_init_hstate = ScannedRNN.initialize_carry(config["NUM_ENVS"], config["GRU_HIDDEN_DIM"])
+        cr_init_hstate = ScannedRNN.initialize_carry(config["NUM_ENVS"], config["HIDDEN_SIZE"])
         critic_network_params = critic_network.init(_rng_critic, cr_init_hstate, cr_init_x)
         
         if config["ANNEAL_LR"]:
@@ -245,8 +246,8 @@ def make_train(config):
         rng, _rng = jax.random.split(rng)
         reset_rng = jax.random.split(_rng, config["NUM_ENVS"])
         obsv, env_state = jax.vmap(env.reset, in_axes=(0,))(reset_rng)
-        ac_init_hstate = ScannedRNN.initialize_carry(config["NUM_ACTORS"], config["GRU_HIDDEN_DIM"])
-        cr_init_hstate = ScannedRNN.initialize_carry(config["NUM_ACTORS"], config["GRU_HIDDEN_DIM"])
+        ac_init_hstate = ScannedRNN.initialize_carry(config["NUM_ACTORS"], config["HIDDEN_SIZE"])
+        cr_init_hstate = ScannedRNN.initialize_carry(config["NUM_ACTORS"], config["HIDDEN_SIZE"])
 
         # TRAIN LOOP
         def _update_step(update_runner_state, unused):
@@ -516,7 +517,7 @@ def make_train(config):
                     update_steps
                     % int(config["NUM_UPDATES"] * config["TEST_INTERVAL"])
                     == 0,
-                    lambda _: _get_greedy_metrics(_rng, actor_network_params),
+                    lambda _: _get_greedy_metrics(_rng, train_states[0].params),
                     lambda _: (test_metrics),
                     operand=None,
                 )
@@ -579,7 +580,7 @@ def make_train(config):
             reset_rng = jax.random.split(_rng, config["NUM_TEST_ENVS"])
             init_obsv, env_state = jax.vmap(test_env.reset, in_axes=(0,))(reset_rng)
             init_dones = jnp.zeros((config["NUM_TEST_ACTORS"]), dtype=bool)
-            ac_hstate = ScannedRNN.initialize_carry(config["NUM_TEST_ACTORS"], config["GRU_HIDDEN_DIM"])
+            ac_hstate = ScannedRNN.initialize_carry(config["NUM_TEST_ACTORS"], config["HIDDEN_SIZE"])
             rng, _rng = jax.random.split(rng)
 
             step_state = (actor_params, env_state, init_obsv, init_dones, ac_hstate, _rng)
@@ -619,21 +620,48 @@ def make_train(config):
 
     return train
 
-@hydra.main(version_base=None, config_path="config", config_name="mappo_homogenous_rnn_mpe")
+@hydra.main(version_base=None, config_path="config", config_name="config")
 def main(config):
-
     config = OmegaConf.to_container(config)
+    config = {**config, **config["alg"]}  # merge the alg config with the main config
+    alg_name = "mappo"
+    env_name = config["ENV_NAME"]
     wandb.init(
         entity=config["ENTITY"],
         project=config["PROJECT"],
-        tags=["MAPPO", "RNN", config["ENV_NAME"]],
+        tags=["MAPPO", "RNN", config["ENV_NAME"], "ablate-hidden-size"],
+        name=f"{alg_name}_{env_name}",
         config=config,
         mode=config["WANDB_MODE"],
     )
     rng = jax.random.PRNGKey(config["SEED"])
-    rngs = jax.random.split(rng, config["NUM_SEEDS"])    
-    train_jit = jax.jit(make_train(config))
-    out = jax.vmap(train_jit)(rngs)
+    rngs = jax.random.split(rng, config["NUM_SEEDS"])
+    train_vjit = jax.jit(jax.vmap(make_train(config)))
+    outs = jax.block_until_ready(train_vjit(rngs))
+
+    save_dir = os.path.join(config["SAVE_PATH"], f"{alg_name}", env_name, f"{config['HIDDEN_SIZE']}")
+    os.makedirs(save_dir, exist_ok=True)
+
+    # save params
+    if config.get("SAVE_PATH", None) is not None:
+        from jaxmarl.wrappers.baselines import save_params
+
+        print(outs["runner_state"][0][0][0])
+        model_state = outs["runner_state"][0][0][0]
+        OmegaConf.save(
+            config,
+            os.path.join(
+                save_dir, f'{alg_name}_{env_name}_seed{config["SEED"]}_config.yaml'
+            ),
+        )
+
+        for i, rng in enumerate(rngs):
+            params = jax.tree.map(lambda x: x[i], model_state.params)
+            save_path = os.path.join(
+                save_dir,
+                f'{alg_name}_{env_name}_seed{config["SEED"]}_vmap{i}_rng{int(rng[0])}.safetensors',
+            )
+            save_params(params, save_path)
 
     # force multiruns to finish correctly
     wandb.finish()

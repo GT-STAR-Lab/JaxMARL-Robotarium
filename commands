@@ -3,3 +3,6 @@ python baselines/QLearning/qmix_rnn.py -m +alg=ql_rnn_at,ql_rnn_discovery,ql_rnn
 
 # train all pqn
 python baselines/QLearning/pqn_vdn_rnn.py -m +alg=pqn_vdn_rnn_at,pqn_vdn_rnn_discovery,pqn_vdn_rnn_foraging,pqn_vdn_rnn_mt,pqn_vdn_rnn_navigation,pqn_vdn_rnn_pp,pqn_vdn_rnn_rware,pqn_vdn_rnn_warehouse
+
+# train all mappo
+python baselines/MAPPO/mappo_rnn.py -m +alg=mappo_rnn_at,mappo_rnn_discovery,mappo_rnn_foraging,mappo_rnn_mt,mappo_rnn_navigation,mappo_rnn_pp,mappo_rnn_rware,mappo_rnn_warehouse

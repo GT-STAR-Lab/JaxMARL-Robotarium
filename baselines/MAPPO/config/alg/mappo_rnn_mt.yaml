@@ -1,0 +1,49 @@
+"LR": 2e-3
+"NUM_ENVS": 16 
+"NUM_STEPS": 71 
+"TOTAL_TIMESTEPS": 5e6
+"HIDDEN_SIZE": 128
+"UPDATE_EPOCHS": 4
+"NUM_MINIBATCHES": 4
+"GAMMA": 0.99
+"GAE_LAMBDA": 0.95
+"CLIP_EPS": 0.2
+"SCALE_CLIP_EPS": False
+"ENT_COEF": 0.01
+"VF_COEF": 0.5
+"MAX_GRAD_NORM": 0.5
+"ACTIVATION": "tanh"
+"ANNEAL_LR": True
+
+# ENV
+"ENV_NAME": "material_transport"
+"ENV_KWARGS": {
+  "num_agents": 4,
+  "max_steps": 70,
+  "action_type": "Discrete",
+  "robotarium": {
+    "number_of_robots": 4,
+    "show_figure": False,
+    "sim_in_real_time": False,
+  },
+  "controller": {
+    "controller": "clf_uni_position",
+    "barrier_fn": "robust_barriers",
+  },
+  "heterogeneity": {
+      "type": "capability_set",
+      "obs_type": "full_capability_set",
+      "values": [[.45, 5], [.45, 5], [.15, 15], [.15, 15]],
+      "sample": False,
+  },
+  "zone1_dist": {
+      "mu": 75,
+      "sigma": 10,
+  },
+  "zone2_dist": {
+      "mu": 15,
+      "sigma": 4,
+  },
+  "step_dist": 1,
+  "update_frequency": 60
+}
