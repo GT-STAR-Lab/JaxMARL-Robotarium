@@ -12,7 +12,7 @@
 "number_of_robots": 3
 "controller": "clf_uni_position"
 "barrier_fn": "robust_barriers"
-"update_frequency": 30
+"update_frequency": 60
 
 # MODEL CONFIG
 "input_dim": 31

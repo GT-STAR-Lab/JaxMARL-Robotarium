@@ -1,5 +1,5 @@
 "SEED": 0
-"NUM_SEEDS": 1
+"NUM_SEEDS": 5
 
 # wandb params
 "ENTITY": "star-lab-gt"

@@ -629,7 +629,7 @@ def main(config):
     wandb.init(
         entity=config["ENTITY"],
         project=config["PROJECT"],
-        tags=["MAPPO", "RNN", config["ENV_NAME"], "ablate-hidden-size"],
+        tags=["MAPPO", "RNN", config["ENV_NAME"].upper(), "final-mappo"],
         name=f"{alg_name}_{env_name}",
         config=config,
         mode=config["WANDB_MODE"],
@@ -639,7 +639,7 @@ def main(config):
     train_vjit = jax.jit(jax.vmap(make_train(config)))
     outs = jax.block_until_ready(train_vjit(rngs))
 
-    save_dir = os.path.join(config["SAVE_PATH"], f"{alg_name}", env_name, f"{config['HIDDEN_SIZE']}")
+    save_dir = os.path.join(config["SAVE_PATH"], f"{alg_name}-final", env_name, f"{config['HIDDEN_SIZE']}")
     os.makedirs(save_dir, exist_ok=True)
 
     # save params

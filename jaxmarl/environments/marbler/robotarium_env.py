@@ -223,6 +223,7 @@ class RobotariumEnv:
         self.observation_spaces = dict()
         self.action_spaces = dict()
         self.max_steps = max_steps
+        self.eval = kwargs.get("eval", False)
 
         # Initialize robotarium and controller backends 
         default_robotarium_args = {'number_of_robots': num_agents, 'show_figure': False, 'sim_in_real_time': False}
@@ -415,10 +416,16 @@ class RobotariumEnv:
         """
         poses = poses.T
         goals = goals.T
-        dxu = self.controller.get_action(poses, goals) 
+        orig_dxu = self.controller.get_action(poses, goals) 
         def wrapped_step(poses, unused):
-            updated_pose = self.robotarium.batch_step(poses, dxu)
-            return updated_pose, None
+            dxu = jax.lax.cond(
+                self.eval,
+                lambda _: self.controller.get_action(poses, goals),
+                lambda _: orig_dxu,
+                operand=None
+            )
+            poses = self.robotarium.batch_step(poses, dxu)
+            return poses, None
         final_pose, _ = jax.lax.scan(wrapped_step, poses, None, self.update_frequency)
 
         return final_pose.T
