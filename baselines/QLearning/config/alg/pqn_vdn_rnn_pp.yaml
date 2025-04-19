@@ -40,6 +40,7 @@
 "TEST_DURING_TRAINING": True
 "TEST_INTERVAL": 0.05 # as a fraction of updates, i.e. log every 5% of training process
 "TEST_NUM_STEPS": 101
-"TEST_NUM_ENVS": 64 # number of episodes to average over, can affect performance
+"TEST_NUM_ENVS": 100 # number of episodes to average over, can affect performance
 
 #"ALG_NAME": "pqn_vdn_cnn" # if you want to change the name of the algo in the metrics
+"MODELS_PATH": /home/sjain441/JaxMARL-Robotarium/baselines/QLearning/artifacts/pqn_vdn_rnn-final/predator_prey

@@ -33,3 +33,5 @@
   },
   "update_frequency": 60
 }
+
+"MODELS_PATH": /home/sjain441/JaxMARL-Robotarium/baselines/IPPO/artifacts/ippo-final/rware

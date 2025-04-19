@@ -7,7 +7,7 @@
 "WANDB_MODE": "online"
 "WANDB_LOG_ALL_SEEDS": True # will log separately the vmapped seeds
 
-"NUM_TEST_ENVS": 64
+"NUM_TEST_ENVS": 100
 "TEST_INTERVAL": 0.05
 
 # where to save the params (if None, will not save)

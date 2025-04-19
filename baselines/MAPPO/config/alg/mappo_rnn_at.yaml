@@ -38,3 +38,5 @@
   },
   "update_frequency": 30
 }
+
+"MODELS_PATH": /home/sjain441/JaxMARL-Robotarium/baselines/MAPPO/artifacts/mappo-final/arctic_transport
