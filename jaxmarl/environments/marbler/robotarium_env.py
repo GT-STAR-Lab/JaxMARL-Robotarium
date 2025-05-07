@@ -229,6 +229,7 @@ class RobotariumEnv:
         default_robotarium_args = {'number_of_robots': num_agents, 'show_figure': False, 'sim_in_real_time': False}
         self.robotarium = Robotarium(**kwargs.get('robotarium', default_robotarium_args))
         self.controller = Controller(**kwargs.get('controller', {}))
+        self.actuation_noise = kwargs.get('actuation_noise', 0)
         self.step_dist = kwargs.get('step_dist', 0.2)
         self.update_frequency = kwargs.get('update_frequency', 10)
 
@@ -401,6 +402,36 @@ class RobotariumEnv:
             (chex.Array) action
         """
         return action
+    
+    def _noisy_robotarium_step(self, poses: jnp.ndarray, goals: jnp.ndarray, key):
+        """
+        Wrapper to step robotarium simulator update_frequency times
+
+        Args:
+            poses: (jnp.ndarray) Nx3 array of robot poses
+            actions: (jnp.ndarray) Nx2 array of robot actions
+            key: (chex.PRNGKey) random key for sampling noise
+        
+        Returns:
+            (jnp.ndarray) final poses after update_frequency steps
+        """
+        poses = poses.T
+        goals = goals.T
+        orig_dxu = self.controller.get_action(poses, goals) 
+        def wrapped_step(poses, unused):
+            dxu = jax.lax.cond(
+                self.eval,
+                lambda _: self.controller.get_action(poses, goals),
+                lambda _: orig_dxu,
+                operand=None
+            )
+            _, key_n = jax.random.split(key)
+            dxu = dxu + jax.random.normal(key_n, dxu.shape) * self.actuation_noise
+            poses = self.robotarium.batch_step(poses, dxu)
+            return poses, None
+        final_pose, _ = jax.lax.scan(wrapped_step, poses, None, self.update_frequency)
+
+        return final_pose.T
     
     def _robotarium_step(self, poses: jnp.ndarray, goals: jnp.ndarray):
         """

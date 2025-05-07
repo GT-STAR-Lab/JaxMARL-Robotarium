@@ -15,6 +15,7 @@ class PredatorPrey(RobotariumEnv):
 
         # Predator tag radius
         self.tag_radius = kwargs.get('tag_radius', 0.2)
+        self.prey_step = kwargs.get('prey_step', 0.3)
 
         # Initialize backend
         if self.backend == 'jax':
@@ -94,7 +95,7 @@ class PredatorPrey(RobotariumEnv):
 
         num_angles = 8
         num_steps = 4
-        max_step = 0.3
+        max_step = self.prey_step
 
         # directions
         angles = jnp.linspace(0, 2 * jnp.pi, num_angles, endpoint=False)
@@ -175,7 +176,7 @@ class PredatorPrey(RobotariumEnv):
         # update tagged state
         agent_pos = state.p_pos[:self.num_agents, :2]  # get x, y of only tagging agents
         dist = jnp.linalg.norm(agent_pos - state.p_pos[self.num_agents, :2], axis=-1)    # get dist from all tagging agents to prey
-        tagged = dist < self.tag_radius # compare to tag radius
+        tagged = dist < self.tag_radius # compare to tag radius.
 
         # update tag count
         state = state.replace(landmark_tagged=state.landmark_tagged + tagged.any()*1) # multiplied by 1 to get conversion to int

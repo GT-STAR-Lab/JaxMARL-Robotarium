@@ -9,6 +9,7 @@ __pycache__/
 .ipynb_checkpoints/
 docker/*
 *.pickle
+*.pkl
 results/
 tmp/
 *-checkpoint.py

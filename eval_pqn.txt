@@ -1,0 +1,161 @@
+[2025-04-20 00:14:41,685][HYDRA] Launching 8 jobs locally
+[2025-04-20 00:14:41,685][HYDRA] 	#0 : +alg=pqn_vdn_rnn_at
+
+=== arctic_transport ===
+
+--- MEAN ---
+boundary: 0.03200000151991844
+collision: 0.0
+returned_episode: 1.0
+returned_episode_lengths: 101.00000762939453
+returned_episode_returns: -3.559628963470459
+success_rate: 1.0
+
+--- STD ---
+boundary: 0.17599999904632568
+collision: 0.0
+returned_episode: 0.0
+returned_episode_lengths: 7.62939453125e-06
+returned_episode_returns: 0.8552083969116211
+success_rate: 0.0
+[2025-04-20 00:15:44,778][HYDRA] 	#1 : +alg=pqn_vdn_rnn_discovery
+
+=== discovery ===
+
+--- MEAN ---
+boundary: 0.036000002175569534
+collision: 0.0
+landmark_sensed: 5.3520002365112305
+landmark_tagged: 5.074000358581543
+returned_episode: 1.0
+returned_episode_lengths: 101.00000762939453
+returned_episode_returns: 26.59764289855957
+success_rate: 0.3720000088214874
+
+--- STD ---
+boundary: 0.18629010021686554
+collision: 0.0
+landmark_sensed: 0.855626106262207
+landmark_tagged: 0.9014011025428772
+returned_episode: 0.0
+returned_episode_lengths: 7.62939453125e-06
+returned_episode_returns: 4.500946044921875
+success_rate: 0.4833383858203888
+[2025-04-20 00:17:03,700][HYDRA] 	#2 : +alg=pqn_vdn_rnn_foraging
+
+=== foraging ===
+
+--- MEAN ---
+boundary: 0.1420000046491623
+collision: 0.0
+resources_foraged: 0.34200000762939453
+returned_episode: 1.0
+returned_episode_lengths: 101.0
+returned_episode_returns: 1.815999984741211
+success_rate: 0.0139999995008111
+
+--- STD ---
+boundary: 0.37661120295524597
+collision: 0.0
+resources_foraged: 0.5030268430709839
+returned_episode: 0.0
+returned_episode_lengths: 0.0
+returned_episode_returns: 2.694094181060791
+success_rate: 0.11749042570590973
+[2025-04-20 00:18:21,696][HYDRA] 	#3 : +alg=pqn_vdn_rnn_mt
+
+=== material_transport ===
+
+--- MEAN ---
+boundary: 0.21800000965595245
+collision: 0.0020000000949949026
+material_remaining: 65.13440704345703
+returned_episode: 1.0
+returned_episode_lengths: 71.0
+returned_episode_returns: -4.96599817276001
+success_rate: 0.0
+
+--- STD ---
+boundary: 0.49646347761154175
+collision: 0.04467662051320076
+material_remaining: 16.68090057373047
+returned_episode: 0.0
+returned_episode_lengths: 0.0
+returned_episode_returns: 1.349737286567688
+success_rate: 0.0
+[2025-04-20 00:20:00,653][HYDRA] 	#4 : +alg=pqn_vdn_rnn_navigation
+
+=== navigation ===
+
+--- MEAN ---
+boundary: 0.0
+collision: 0.0
+returned_episode: 1.0
+returned_episode_lengths: 101.0
+returned_episode_returns: -18.3321533203125
+success_rate: 0.5899999737739563
+
+--- STD ---
+boundary: 0.0
+collision: 0.0
+returned_episode: 0.0
+returned_episode_lengths: 0.0
+returned_episode_returns: 17.5439510345459
+success_rate: 0.49183326959609985
+[2025-04-20 00:21:11,780][HYDRA] 	#5 : +alg=pqn_vdn_rnn_pp
+
+=== predator_prey ===
+
+--- MEAN ---
+boundary: 0.03799999877810478
+collision: 0.0
+prey_tagged: 5.880000114440918
+returned_episode: 1.0
+returned_episode_lengths: 101.0
+returned_episode_returns: 58.79999923706055
+
+--- STD ---
+boundary: 0.1911962330341339
+collision: 0.0
+prey_tagged: 5.482845783233643
+returned_episode: 0.0
+returned_episode_lengths: 0.0
+returned_episode_returns: 54.828460693359375
+[2025-04-20 00:22:23,107][HYDRA] 	#6 : +alg=pqn_vdn_rnn_rware
+
+=== rware ===
+
+--- MEAN ---
+boundary: 0.026000000536441803
+collision: 0.0
+returned_episode: 1.0
+returned_episode_lengths: 101.0
+returned_episode_returns: 5.8919997215271
+total_deliveries: 5.8919997215271
+
+--- STD ---
+boundary: 0.1591351479291916
+collision: 0.0
+returned_episode: 0.0
+returned_episode_lengths: 0.0
+returned_episode_returns: 8.748504638671875
+total_deliveries: 8.748504638671875
+[2025-04-20 00:24:28,201][HYDRA] 	#7 : +alg=pqn_vdn_rnn_warehouse
+
+=== warehouse ===
+
+--- MEAN ---
+boundary: 0.030000001192092896
+collision: 0.0
+deliveries_made: 1.7360000610351562
+returned_episode: 1.0
+returned_episode_lengths: 71.0
+returned_episode_returns: 8.386000633239746
+
+--- STD ---
+boundary: 0.1705872267484665
+collision: 0.0
+deliveries_made: 1.2658215761184692
+returned_episode: 0.0
+returned_episode_lengths: 0.0
+returned_episode_returns: 4.4771647453308105

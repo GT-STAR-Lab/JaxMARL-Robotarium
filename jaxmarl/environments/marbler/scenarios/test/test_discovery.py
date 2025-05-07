@@ -146,14 +146,14 @@ class TestDiscovery(unittest.TestCase):
         initial_state = state
 
         def get_action(state):
-            return {str(f'agent_{i}'): jax.random.choice(self.key, jnp.arange(5)) for i in range(self.num_agents)}
+            return {str(f'agent_{i}'): jnp.array([3]) for i in range(self.num_agents)}
         
         def wrapped_step(poses, unused):
             actions = jax.vmap(get_action, in_axes=(0))(poses)
             new_obs, new_state, rewards, dones, infos = jax.vmap(self.env.step, in_axes=(0, 0, 0))(keys, poses, actions)
             return new_state, (new_state, rewards)
 
-        final_state, (batch, rewards) = jax.lax.scan(wrapped_step, state, None, 75)
+        final_state, (batch, rewards) = jax.lax.scan(wrapped_step, state, None, 80)
 
         rewards = jnp.array([rewards[agent] for agent in rewards])
         

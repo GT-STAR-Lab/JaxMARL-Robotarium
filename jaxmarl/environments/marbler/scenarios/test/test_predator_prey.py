@@ -34,6 +34,7 @@ class TestPredatorPrey(unittest.TestCase):
     
     def test_step(self):
         _, state = self.env.reset(self.key)
+        self.env.prey_step = 0  # immobilize prey for test
         p_pos = jnp.array([[-0.5, 0, 0], [0.5, 0, 0], [-0.5, 0, 0]])
         state = state.replace(
             p_pos = p_pos

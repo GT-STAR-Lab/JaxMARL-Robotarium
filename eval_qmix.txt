@@ -1,0 +1,161 @@
+[2025-04-20 00:26:07,232][HYDRA] Launching 8 jobs locally
+[2025-04-20 00:26:07,232][HYDRA] 	#0 : +alg=ql_rnn_at
+
+=== arctic_transport ===
+
+--- MEAN ---
+boundary: 0.05400000140070915
+collision: 0.0
+returned_episode: 1.0
+returned_episode_lengths: 101.00000762939453
+returned_episode_returns: -3.417865514755249
+success_rate: 0.9860000610351562
+
+--- STD ---
+boundary: 0.2346997857093811
+collision: 0.0
+returned_episode: 0.0
+returned_episode_lengths: 7.62939453125e-06
+returned_episode_returns: 0.5379925966262817
+success_rate: 0.11749041825532913
+[2025-04-20 00:27:20,164][HYDRA] 	#1 : +alg=ql_rnn_discovery
+
+=== discovery ===
+
+--- MEAN ---
+boundary: 0.0560000017285347
+collision: 0.0
+landmark_sensed: 5.902000427246094
+landmark_tagged: 5.6060004234313965
+returned_episode: 1.0
+returned_episode_lengths: 101.00000762939453
+returned_episode_returns: 29.79995346069336
+success_rate: 0.6580000519752502
+
+--- STD ---
+boundary: 0.22992174327373505
+collision: 0.0
+landmark_sensed: 0.3231036961078644
+landmark_tagged: 0.5888667702674866
+returned_episode: 0.0
+returned_episode_lengths: 7.62939453125e-06
+returned_episode_returns: 3.1512882709503174
+success_rate: 0.4743795692920685
+[2025-04-20 00:28:37,185][HYDRA] 	#2 : +alg=ql_rnn_foraging
+
+=== foraging ===
+
+--- MEAN ---
+boundary: 0.06399999558925629
+collision: 0.0
+resources_foraged: 0.8299999833106995
+returned_episode: 1.0
+returned_episode_lengths: 101.0
+returned_episode_returns: 4.478000164031982
+success_rate: 0.0820000022649765
+
+--- STD ---
+boundary: 0.26058393716812134
+collision: 0.0
+resources_foraged: 0.5523585677146912
+returned_episode: 0.0
+returned_episode_lengths: 0.0
+returned_episode_returns: 3.037353754043579
+success_rate: 0.274364709854126
+[2025-04-20 00:29:53,096][HYDRA] 	#3 : +alg=ql_rnn_mt
+
+=== material_transport ===
+
+--- MEAN ---
+boundary: 0.00800000037997961
+collision: 0.004000000189989805
+material_remaining: 4.195408344268799
+returned_episode: 1.0
+returned_episode_lengths: 71.0
+returned_episode_returns: 4.624704837799072
+success_rate: 0.2160000056028366
+
+--- STD ---
+boundary: 0.08908423036336899
+collision: 0.06311893463134766
+material_remaining: 7.020406723022461
+returned_episode: 0.0
+returned_episode_lengths: 0.0
+returned_episode_returns: 1.6005545854568481
+success_rate: 0.4115142822265625
+[2025-04-20 00:31:24,124][HYDRA] 	#4 : +alg=ql_rnn_navigation
+
+=== navigation ===
+
+--- MEAN ---
+boundary: 0.0
+collision: 0.0
+returned_episode: 1.0
+returned_episode_lengths: 101.0
+returned_episode_returns: -16.983654022216797
+success_rate: 0.8199999928474426
+
+--- STD ---
+boundary: 0.0
+collision: 0.0
+returned_episode: 0.0
+returned_episode_lengths: 0.0
+returned_episode_returns: 14.8494873046875
+success_rate: 0.3841874599456787
+[2025-04-20 00:32:33,230][HYDRA] 	#5 : +alg=ql_rnn_pp
+
+=== predator_prey ===
+
+--- MEAN ---
+boundary: 0.0820000022649765
+collision: 0.0
+prey_tagged: 0.6299999952316284
+returned_episode: 1.0
+returned_episode_lengths: 101.0
+returned_episode_returns: 6.299999713897705
+
+--- STD ---
+boundary: 0.28857579827308655
+collision: 0.0
+prey_tagged: 1.4467549324035645
+returned_episode: 0.0
+returned_episode_lengths: 0.0
+returned_episode_returns: 14.467549324035645
+[2025-04-20 00:33:52,132][HYDRA] 	#6 : +alg=ql_rnn_rware
+
+=== rware ===
+
+--- MEAN ---
+boundary: 0.07599999755620956
+collision: 0.0
+returned_episode: 1.0
+returned_episode_lengths: 101.0
+returned_episode_returns: 3.6440000534057617
+total_deliveries: 3.6440000534057617
+
+--- STD ---
+boundary: 0.26499810814857483
+collision: 0.0
+returned_episode: 0.0
+returned_episode_lengths: 0.0
+returned_episode_returns: 3.8342227935791016
+total_deliveries: 3.8342227935791016
+[2025-04-20 00:36:08,043][HYDRA] 	#7 : +alg=ql_rnn_warehouse
+
+=== warehouse ===
+
+--- MEAN ---
+boundary: 0.07800000160932541
+collision: 0.0
+deliveries_made: 0.8840000629425049
+returned_episode: 1.0
+returned_episode_lengths: 71.0
+returned_episode_returns: 6.12000036239624
+
+--- STD ---
+boundary: 0.27552857995033264
+collision: 0.0
+deliveries_made: 1.0929518938064575
+returned_episode: 0.0
+returned_episode_lengths: 0.0
+returned_episode_returns: 3.6378018856048584

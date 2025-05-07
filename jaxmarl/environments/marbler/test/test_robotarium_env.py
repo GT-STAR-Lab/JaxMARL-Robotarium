@@ -174,15 +174,15 @@ class TestHetManager(unittest.TestCase):
 
         # agent 0
         expected_het = jnp.concatenate([state.het_rep[0], state.het_rep[1], state.het_rep[2]])
-        self.assertTrue(jnp.array_equal(obs[0, -env.het_manager.dim_c:], expected_het))
+        self.assertTrue(jnp.array_equal(obs[0, -env.het_manager.dim_h:], expected_het))
 
         # agent 1
         expected_het = jnp.concatenate([state.het_rep[1], state.het_rep[2], state.het_rep[0]])
-        self.assertTrue(jnp.array_equal(obs[1, -env.het_manager.dim_c:], expected_het))
+        self.assertTrue(jnp.array_equal(obs[1, -env.het_manager.dim_h:], expected_het))
 
         # agent 2
         expected_het = jnp.concatenate([state.het_rep[2], state.het_rep[0], state.het_rep[1]])
-        self.assertTrue(jnp.array_equal(obs[2, -env.het_manager.dim_c:], expected_het))
+        self.assertTrue(jnp.array_equal(obs[2, -env.het_manager.dim_h:], expected_het))
         
         self.assertTrue(state.het_rep.shape[0] == args['num_agents'])
     

@@ -25,15 +25,27 @@ def fetch_wandb_data(run_paths, metrics):
     for path, metric in zip(run_paths, metrics):
         try:
             run = api.run(path)
+            config = run.config
+
             keys = [metric, '_runtime']
             print(f"Fetching: {run.name} with metrics {keys} from {path}")
-            history = run.history(samples=10000, keys=['_runtime'].extend(metric))
+            history = run.scan_history()
 
             run_data = pd.DataFrame(history)
             run_data['run_path'] = path
             run_data['run_name'] = run.name
-            run_data['run_type'] = 'JaxRobotarium' if 'jax' in path else 'MARBLER'
-            run_data['return'] = run_data[metric[0]] * 100 if 'jax' in path else run_data[metric[0]] / 4
+
+            if 'jax' in path:
+                num_envs = config.get("NUM_ENVS", None)
+                if num_envs:
+                    run_data['run_type'] = f"JaxRobotarium ({num_envs})"
+                else:
+                    run_data['run_type'] = "JaxRobotarium (num_envs=?)"
+            else:
+                run_data['run_type'] = 'MARBLER'
+
+            # Normalize metric naming
+            run_data['return'] = run_data[metric[0]] * (config["NUM_STEPS"]-1) if 'jax' in path else run_data[metric[0]] / 4 # normalization
             run_data['_runtime'] = run_data['_runtime'] - run_data['_runtime'].min()
             run_data['timestep'] = run_data[metric[1]]
 
@@ -49,137 +61,217 @@ def get_from_wandb(name, run_paths, metrics):
     save_dataframe(df, filename)
     return df
 
-def plot_metric_over_wall_time(df, title, name, metric, swap_axes=False, legend=True):
-    import pandas as pd
-    import matplotlib.pyplot as plt
-    import seaborn as sns
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from scipy.interpolate import interp1d
+from scipy.ndimage import gaussian_filter1d
 
-    # Find the minimum max wall_time across all runs
-    df = df[df[metric].notnull()]
-    min_max_wall_time = df.groupby('run_path')['_runtime'].max().min()
 
-    extrapolated_rows = []
+def plot_metric_over_wall_time(df, title, name, metric, swap_axes=False, legend=True, smooth_sigma=10):
+    plt.figure(figsize=(8, 6))
+    plt.rcParams.update({'font.size': 24})
+    palette = {
+        "JaxRobotarium (8)": "#FF6365", "JaxRobotarium (1)": "#B4A7D6", "MARBLER": sns.color_palette()[0],
+    }
 
-    temp_df = df[df['_runtime'] <= min_max_wall_time]
-    for (_, temp_group), (_, group) in zip(temp_df.groupby('run_path'), df.groupby('run_path')):
-        group_sorted = group[group.notna()].sort_values('_runtime')
-        max_runtime = temp_group['_runtime'].max()
+    # Determine shared runtime upper bound (minimum of all run max runtimes)
+    max_runtimes = df.groupby('run_path')['_runtime'].max()
+    global_max_time = max_runtimes.min() - 50
 
-        if max_runtime < min_max_wall_time:
-            # Find the last point before and the first point after min_max_wall_time
-            before = group_sorted[group_sorted['_runtime'] <= min_max_wall_time]
-            before = before[before[metric].notna()].iloc[-1]
-            after_candidates = group_sorted[group_sorted['_runtime'] > min_max_wall_time]
-            after_candidates = after_candidates[after_candidates[metric].notna()]
+    # Interpolation grid
+    common_times = np.linspace(0, global_max_time, 1000)
 
-            if not after_candidates.empty:
-                after = after_candidates.iloc[0]
+    for i, (label, group) in enumerate(df.groupby('run_type')):
+        print(label)
+        runs = []
 
-                t1, y1 = before['_runtime'], before[metric]
-                t2, y2 = after['_runtime'], after[metric]
+        for run_id, run_data in group.groupby('run_path'):
+            run_data_sorted = run_data.sort_values('_runtime')
+            x = run_data_sorted['_runtime'].values
+            y = run_data_sorted[metric].values
 
-                slope = (y2 - y1) / (t2 - t1)
-                extrapolated_y = y1 + slope * (min_max_wall_time - t1)
-            else:
-                # No point after min_max_wall_time, fallback to constant value
-                extrapolated_y = before[metric]
+            # Remove NaNs
+            valid = (~np.isnan(x)) & (~np.isnan(y)) & (x <= global_max_time)
+            x = x[valid]
+            y = y[valid] * 4 if (label == "MARBLER" and "warehouse" in name.lower() and "return" in metric) else y[valid]
 
-            extrapolated_row = before.copy()
-            extrapolated_row['_runtime'] = min_max_wall_time
-            extrapolated_row[metric] = extrapolated_y
-            extrapolated_rows.append(extrapolated_row)
+            try:
+                interp_func = interp1d(
+                    x, y,
+                    kind='linear',
+                    bounds_error=False,
+                    fill_value='extrapolate'
+                )
+                interpolated = interp_func(common_times)
+                interpolated = interpolated[common_times <= global_max_time]
+                runs.append(interpolated)
+            except Exception as e:
+                print(f"Skipping run {run_id} due to interpolation error: {e}")
 
-    # Combine with the original DataFrame
-    if extrapolated_rows:
-        df = pd.concat([df, pd.DataFrame(extrapolated_rows)], ignore_index=True)
+        if not runs:
+            continue
 
-    # Now filter
-    df_clipped = df[df['_runtime'] <= min_max_wall_time]
+        runs_array = np.stack(runs)
+        mean_vals = np.mean(runs_array, axis=0)
+        std_vals = np.std(runs_array, axis=0)
 
-    if metric == "return":
-        df_clipped = (
-            df_clipped
-            .sort_values(['_runtime'])
-            .groupby('run_path', group_keys=False)
-            .apply(lambda g: g.assign(**{metric: g[metric].rolling(25, min_periods=1).mean()}))
-        )
+        # Apply Gaussian smoothing
+        mean_vals = gaussian_filter1d(mean_vals, sigma=smooth_sigma)
+        std_vals = gaussian_filter1d(std_vals, sigma=smooth_sigma)
 
-    # Plot
-    plt.figure(figsize=(8,6))
-    plt.rc('font', size=18)
+        color = palette[label]
+        if swap_axes:
+            plt.plot(mean_vals, common_times, label=label, color=color, linewidth=2)
+            plt.fill_betweenx(common_times, mean_vals - std_vals, mean_vals + std_vals, color=color, alpha=0.2)
+        else:
+            plt.plot(common_times, mean_vals, label=label, color=color, linewidth=2)
+            plt.fill_between(common_times, mean_vals - std_vals, mean_vals + std_vals, color=color, alpha=0.2)
+
     if swap_axes:
-        sns.lineplot(data=df_clipped, x=metric, y='_runtime', hue='run_type', legend=legend, linewidth=2)
         plt.ylabel("Wall Time (s)")
-        plt.xlabel(metric.capitalize())
+        plt.xlabel(metric.replace("_", " ").title())
     else:
-        sns.lineplot(data=df_clipped, x='_runtime', y=metric, hue='run_type', legend=legend, linewidth=2)
         plt.xlabel("Wall Time (s)")
-        plt.ylabel(metric.capitalize())
+        plt.ylabel(metric.replace("_", " ").title())
+
     plt.title(title)
     if legend:
-        plt.legend(title=None)
+        handles, labels = plt.gca().get_legend_handles_labels()
+        order = [1,0,2]
+        plt.legend([handles[idx] for idx in order],[labels[idx] for idx in order])
     plt.tight_layout()
-    plt.savefig(f'{name}.png')
+    plt.savefig(name)
+    plt.close()
+
 
 if __name__ == "__main__":
     # Example usage
 
     # DISCOVERY
-    run_paths = [
-        "star-lab-gt/jax-marbler/kc777sv5",
-        "star-lab-gt/CASH-MARBLER/04bxmm3z"
-    ]
-    title = 'QMIX / Discovery'
-    name = "qmix-discovery"
-    metrics = [["returned_episode_returns", "env_step"], ["return_mean", "_step"]]  # specify the metric key(s)
-    df = load_dataframe(f"{name}.pkl")
-    if df is None:
-        df = get_from_wandb(name, run_paths, metrics)
+    # run_paths = [
+    #     "star-lab-gt/jax-marbler/812z3rcf",
+    #     "star-lab-gt/jax-marbler/bpacmajk",
+    #     "star-lab-gt/jax-marbler/aqxp3fdo",
+    #     "star-lab-gt/jax-marbler/gpribpfg",
+    #     "star-lab-gt/jax-marbler/yuoelbw6",
+    #     "star-lab-gt/jax-marbler/9sl74oug",
+    #     "star-lab-gt/CASH-MARBLER/yeg52ads",
+    #     "star-lab-gt/CASH-MARBLER/b83amt8u",
+    #     "star-lab-gt/CASH-MARBLER/cqds68ae"
+    # ]
+    # title = 'Discovery'
+    # name = "qmix-discovery"
+    # metrics = [
+    #     ["returned_episode_returns", "env_step"],
+    #     ["returned_episode_returns", "env_step"],
+    #     ["returned_episode_returns", "env_step"],
+    #     ["returned_episode_returns", "env_step"],
+    #     ["returned_episode_returns", "env_step"],
+    #     ["returned_episode_returns", "env_step"],
+    #     ["return_mean", "_step"],
+    #     ["return_mean", "_step"],
+    #     ["return_mean", "_step"],
+    # ]  # specify the metric key(s)
+    # df = load_dataframe(f"{name}.pkl")
+    # if df is None:
+    #     df = get_from_wandb(name, run_paths, metrics)
 
-    plot_metric_over_wall_time(df, title=title, name=f"{name}-return", metric="return", legend=False)
-    plot_metric_over_wall_time(df, title=title, name=f"{name}-timestep", metric="timestep", legend=False)
+    # plot_metric_over_wall_time(df, title=title, name=f"{name}-return", metric="return", legend=False)
+    # plot_metric_over_wall_time(df, title=title, name=f"{name}-timestep", metric="timestep", legend=False)
 
-    # MT
-    run_paths = [
-        "star-lab-gt/jax-marbler/gjg6c7uc",
-        "star-lab-gt/CASH-MARBLER/rpudekeq"
-    ]
-    metrics = [["returned_episode_returns", "env_step"], ["return_mean", "_step"]] # specify the metric key(s)
-    title = 'QMIX / Material Transport'
-    name = "qmix-mt"
-    df = load_dataframe(f"{name}.pkl")
-    if df is None:
-        df = get_from_wandb(name, run_paths, metrics)
+    # # MT
+    # run_paths = [
+    #     "star-lab-gt/jax-marbler/mryj8x39",
+    #     "star-lab-gt/jax-marbler/nl54llwl",
+    #     "star-lab-gt/jax-marbler/pnzpnzf5",
+    #     "star-lab-gt/jax-marbler/nig5ue9o",
+    #     "star-lab-gt/jax-marbler/dcogye3e",
+    #     "star-lab-gt/jax-marbler/a8yda4bx",
+    #     "star-lab-gt/CASH-MARBLER/jwlw2n5h",
+    #     "star-lab-gt/CASH-MARBLER/dehqnogb",
+    #     "star-lab-gt/CASH-MARBLER/8dztwrej"
+    # ]
+    # metrics = [
+    #     ["returned_episode_returns", "env_step"],
+    #     ["returned_episode_returns", "env_step"],
+    #     ["returned_episode_returns", "env_step"],
+    #     ["returned_episode_returns", "env_step"],
+    #     ["returned_episode_returns", "env_step"],
+    #     ["returned_episode_returns", "env_step"],
+    #     ["return_mean", "_step"],
+    #     ["return_mean", "_step"],
+    #     ["return_mean", "_step"],
+    # ]  # specify the metric key(s) # specify the metric key(s)
+    # title = 'Material Transport'
+    # name = "qmix-mt"
+    # df = load_dataframe(f"{name}.pkl")
+    # if df is None:
+    #     df = get_from_wandb(name, run_paths, metrics)
 
-    plot_metric_over_wall_time(df, title=title, name=f"{name}-return", metric="return", legend=False)
-    plot_metric_over_wall_time(df, title=title, name=f"{name}-timestep", metric="timestep", legend=False)
+    # plot_metric_over_wall_time(df, title=title, name=f"{name}-return", metric="return", legend=False)
+    # plot_metric_over_wall_time(df, title=title, name=f"{name}-timestep", metric="timestep", legend=False)
 
     # WAREHOUSE
     run_paths = [
-        "star-lab-gt/jax-marbler/p8gk0xo3",
-        "star-lab-gt/CASH-MARBLER/cmv6uv67"
+        "star-lab-gt/jax-marbler/hk08p909",
+        "star-lab-gt/jax-marbler/hh63wnvl",
+        "star-lab-gt/jax-marbler/m1zbhtuh",
+        "star-lab-gt/jax-marbler/i5bpenri",
+        "star-lab-gt/jax-marbler/4frlovid",
+        "star-lab-gt/jax-marbler/vb48bn5c",
+        "star-lab-gt/CASH-MARBLER/kfzdi5ka",
+        "star-lab-gt/CASH-MARBLER/lqop1sb0",
+        "star-lab-gt/CASH-MARBLER/cl1tc7ra"
     ]
-    metrics = [["returned_episode_returns", "env_step"], ["return_mean", "_step"]]  # specify the metric key(s)
-    title = 'QMIX / Warehouse'
+    metrics = [
+        ["returned_episode_returns", "env_step"],
+        ["returned_episode_returns", "env_step"],
+        ["returned_episode_returns", "env_step"],
+        ["returned_episode_returns", "env_step"],
+        ["returned_episode_returns", "env_step"],
+        ["returned_episode_returns", "env_step"],
+        ["return_mean", "_step"],
+        ["return_mean", "_step"],
+        ["return_mean", "_step"],
+    ]  # specify the metric key(s) # specify the metric key(s)
+    title = 'Warehouse'
     name = "qmix-warehouse"
     df = load_dataframe(f"{name}.pkl")
     if df is None:
         df = get_from_wandb(name, run_paths, metrics)
 
-    plot_metric_over_wall_time(df, title=title, name=f"{name}-return", metric="return", legend=False)
-    plot_metric_over_wall_time(df, title=title, name=f"{name}-timestep", metric="timestep", legend=False)
+    # plot_metric_over_wall_time(df, title=title, name=f"{name}-return", metric="return", legend=False)
+    # plot_metric_over_wall_time(df, title=title, name=f"{name}-timestep", metric="timestep", legend=False)
 
-    # ARCTIC TRANSPORT
-    run_paths = [
-        "star-lab-gt/jax-marbler/6gxw1hvp",
-        "star-lab-gt/CASH-MARBLER/qogkkz1f"
-    ]
-    metrics = [["returned_episode_returns", "env_step"], ["return_mean", "_step"]]  # specify the metric key(s)
-    title = 'QMIX / Arctic Transport'
-    name = "qmix-arctic-transport"
-    df = load_dataframe(f"{name}.pkl")
-    if df is None:
-        df = get_from_wandb(name, run_paths, metrics)
+    # # ARCTIC TRANSPORT
+    # run_paths = [
+    #     "star-lab-gt/jax-marbler/0q341a32p",
+    #     "star-lab-gt/jax-marbler/nlws6c72",
+    #     "star-lab-gt/jax-marbler/ji08lrmm",
+    #     "star-lab-gt/jax-marbler/7mfy0mr9",
+    #     "star-lab-gt/jax-marbler/lc3z0w5y",
+    #     "star-lab-gt/jax-marbler/fo0qmtzw"
+    #     "star-lab-gt/CASH-MARBLER/j1lopo5u",
+    #     "star-lab-gt/CASH-MARBLER/jfsr6zsa",
+    #     "star-lab-gt/CASH-MARBLER/1d96evpi"
+    # ]
+    # metrics = [
+    #     ["returned_episode_returns", "env_step"],
+    #     ["returned_episode_returns", "env_step"],
+    #     ["returned_episode_returns", "env_step"],
+    #     ["returned_episode_returns", "env_step"],
+    #     ["returned_episode_returns", "env_step"],
+    #     ["returned_episode_returns", "env_step"],
+    #     ["return_mean", "_step"],
+    #     ["return_mean", "_step"],
+    #     ["return_mean", "_step"],
+    # ]  # specify the metric key(s)
+    # title = 'Arctic Transport'
+    # name = "qmix-arctic-transport"
+    # df = load_dataframe(f"{name}.pkl")
+    # if df is None:
+    #     df = get_from_wandb(name, run_paths, metrics)
 
-    plot_metric_over_wall_time(df, title=title, name=f"{name}-return", metric="return", legend=True)
-    plot_metric_over_wall_time(df, title=title, name=f"{name}-timestep", metric="timestep", legend=False)
+    # plot_metric_over_wall_time(df, title=title, name=f"{name}-return", metric="return", legend=True)
+    # plot_metric_over_wall_time(df, title=title, name=f"{name}-timestep", metric="timestep", legend=False)
