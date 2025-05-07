@@ -4,7 +4,7 @@ Simple scenario where robots must navigate to goals.
 
 # wrap import statement in try-except block to allow for correct import during deployment
 try:
-    from jaxmarl.environments.marbler.robotarium_env import *
+    from jaxmarl.environments.jaxrobotarium.robotarium_env import *
 except Exception as e:
     from robotarium_env import *
 

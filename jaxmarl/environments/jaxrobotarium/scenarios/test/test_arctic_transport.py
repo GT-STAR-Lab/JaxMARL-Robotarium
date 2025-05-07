@@ -2,8 +2,8 @@ import unittest
 import jax
 import jax.numpy as jnp
 
-from jaxmarl.environments.marbler.robotarium_env import State
-from jaxmarl.environments.marbler.scenarios.arctic_transport import ArcticTransport
+from jaxmarl.environments.jaxrobotarium.robotarium_env import State
+from jaxmarl.environments.jaxrobotarium.scenarios.arctic_transport import ArcticTransport
 
 VISUALIZE = False
 

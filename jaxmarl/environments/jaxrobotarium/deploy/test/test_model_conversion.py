@@ -3,10 +3,10 @@ import torch
 import unittest
 from safetensors.flax import load_file
 
-from jaxmarl.environments.marbler.deploy.test.actor import RNNActor
-from jaxmarl.environments.marbler.deploy.test.jax_actor import RNNQNetwork
+from jaxmarl.environments.jaxrobotarium.deploy.test.actor import RNNActor
+from jaxmarl.environments.jaxrobotarium.deploy.test.jax_actor import RNNQNetwork
 from jaxmarl.wrappers.baselines import load_params
-from jaxmarl.environments.marbler.deploy.deploy import flax_to_torch
+from jaxmarl.environments.jaxrobotarium.deploy.deploy import flax_to_torch
 
 class TestModelConversion(unittest.TestCase):
     def setUp(self):

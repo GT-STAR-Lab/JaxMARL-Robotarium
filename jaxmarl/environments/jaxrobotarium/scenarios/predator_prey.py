@@ -1,29 +1,23 @@
 """
-Robots collaborate to complete the maximum number of deliveries.
+Predator Prey where predator agents must collaborate to tag a more agile prey.
 """
 
 # wrap import statement in try-except block to allow for correct import during deployment
 try:
-    from jaxmarl.environments.marbler.robotarium_env import *
+    from jaxmarl.environments.jaxrobotarium.robotarium_env import *
 except Exception as e:
     from robotarium_env import *
 
-class Warehouse(RobotariumEnv):
-    def __init__(self, num_agents, max_steps=70, **kwargs):
-        self.name = 'MARBLER_warehouse'
+class PredatorPrey(RobotariumEnv):
+    def __init__(self, num_agents, max_steps=80, **kwargs):
+        self.name = 'MARBLER_predator_prey'
         self.backend = kwargs.get('backend', 'jax')
 
-        # Heterogeneity
-        default_het_args = {
-            'num_agents': num_agents,
-            'type': 'class',
-            'values': [[1, 0], [1, 0], [0, 1], [0, 1]],
-            'obs_type': None
-        }
-        het_args = kwargs.get('heterogeneity', default_het_args)
-        het_args['num_agents'] = num_agents
-        self.het_manager = HetManager(**het_args)
+        # Predator tag radius
+        self.tag_radius = kwargs.get('tag_radius', 0.2)
+        self.prey_step = kwargs.get('prey_step', 0.3)
 
+        # Initialize backend
         if self.backend == 'jax':
             super().__init__(num_agents, max_steps, **kwargs)
         else:
@@ -33,24 +27,22 @@ class Warehouse(RobotariumEnv):
             super().__init__(num_agents, max_steps, **kwargs)
 
         # Reward shaping
-        self.load_shaping = kwargs.get('load_shaping', 1)
-        self.dropoff_shaping = kwargs.get('dropoff_shaping', 3)
+        self.tag_shaping = kwargs.get('tag_shaping', 10)
         self.violation_shaping = kwargs.get('violation_shaping', 0)
+        self.time_shaping = kwargs.get('time_shaping', 0)
 
-        # Observation space (poses of all agents, heterogeneity)
-        self.obs_dim = (3 * self.num_agents) + self.het_manager.dim_h
+        # Observation space (poses of all agents, prey pose)
+        self.obs_dim = 3 * (self.num_agents + 1)
         if self.backend == 'jax':
             self.observation_spaces = {
                 i: Box(-jnp.inf, jnp.inf, (self.obs_dim,)) for i in self.agents
             }
-        
-        # zone info
-        self.zone_width = 0.5
 
         # Visualization
         self.robot_markers = []
-        self.zone_markers = []
-    
+        self.prey_marker = None
+        self.prev_tag_count = 0
+
     def reset(self, key) -> Tuple[Dict, State]:
         """
         Performs resetting of the environment.
@@ -62,32 +54,84 @@ class Warehouse(RobotariumEnv):
             (Tuple[Dict[str, chex.Array], State]) initial observation and environment state
         """
 
-        # randomly generate initial poses for robots
+        # randomly generate initial poses for robots and prey
         key, key_a = jax.random.split(key)
         poses = generate_initial_conditions(
-            self.num_agents,
+            self.num_agents + 1,
             width=ROBOTARIUM_WIDTH,
             height=ROBOTARIUM_HEIGHT,
-            spacing=0.3,
+            spacing=0.5,
             key=key_a
         )
-        self.robotarium.poses = poses
+        self.robotarium.poses = poses[:, :self.num_agents]
 
         # set velocities to 0
         self.robotarium.set_velocities(jnp.arange(self.num_agents), jnp.zeros((2, self.num_agents)))
 
-        key, key_het = jax.random.split(key)
         state = State(
             p_pos=poses.T,
             done=jnp.full((self.num_agents), False),
             step=0,
-            het_rep = self.het_manager.sample(key_het),
-            payload = jnp.full((self.num_agents,), 0),
-            zone1_load = 0,
-            zone2_load = 0
+            landmark_tagged = jnp.full((1,), 0) # track number of times prey is tagged
         )
 
         return self.get_obs(state), state
+    
+    def _prey_policy(self, state: State) -> jnp.ndarray:
+        """
+        Move the prey based on heuristic in FACMAC.
+        This version samples both directions and step sizes, and selects the candidate
+        position that maximizes distance to the nearest predator.
+
+        USED CHATGPT FOR THIS
+
+        Args:
+            state: (State) environment state
+        Returns:
+            (jnp.ndarray) new prey position
+        """
+        prey_pos = state.p_pos[self.num_agents, :2]
+        predator_pos = state.p_pos[:self.num_agents, :2]
+
+        num_angles = 8
+        num_steps = 4
+        max_step = self.prey_step
+
+        # directions
+        angles = jnp.linspace(0, 2 * jnp.pi, num_angles, endpoint=False)
+        directions = jnp.stack([jnp.cos(angles), jnp.sin(angles)], axis=-1)  # (num_angles, 2)
+
+        # step sizes
+        step_sizes = jnp.linspace(0.05, max_step, num_steps)  # (num_steps,)
+
+        # directions and step sizes -> (num_angles * num_steps, 2)
+        directions = directions[:, None, :]  # (num_angles, 1, 2)
+        step_sizes = step_sizes[None, :, None]  # (1, num_steps, 1)
+        displacements = directions * step_sizes  # (num_angles, num_steps, 2)
+        displacements = displacements.reshape(-1, 2)  # (num_candidates, 2)
+
+        candidates = prey_pos + displacements  # (num_candidates, 2)
+
+        # clip candidates to be within the bounds of the robotarium
+        bounds = self.robotarium.boundaries
+        candidates_x = jnp.clip(candidates[:, 0], bounds[0] + 0.1, bounds[0] + bounds[2] - 0.1)
+        candidates_y = jnp.clip(candidates[:, 1], bounds[1] + 0.1, bounds[1] + bounds[3] - 0.1)
+        candidates = jnp.stack([candidates_x, candidates_y], axis=-1)  # (num_candidates, 2)
+
+        # pairwise distances between candidates and predators
+        # candidates: (num_candidates, 2), predator_pos: (num_predators, 2)
+        diff = candidates[:, None, :] - predator_pos[None, :, :]  # (num_candidates, num_predators, 2)
+        dists = jnp.linalg.norm(diff, axis=-1)  # (num_candidates, num_predators)
+
+        # for each candidate, find distance to closest predator
+        min_dists = jnp.min(dists, axis=1)  # (num_candidates,)
+
+        # get the candidate with the largest min-distance
+        best_idx = jnp.argmax(min_dists)
+        best_pos = candidates[best_idx]
+        best_pos = jnp.concatenate([best_pos, jnp.array([0.0])])  # add orientation, doesn't matter since we assume holonomic
+
+        return best_pos
 
     def step_env(
         self, key, state: State, actions: Dict
@@ -110,6 +154,8 @@ class Warehouse(RobotariumEnv):
             )
         """
 
+        updated_prey_pose = self._prey_policy(state)
+
         actions = jnp.array([self.action_decoder(i, actions[f'agent_{i}'], state) for i in range(self.num_agents)]).reshape(
             (self.num_agents, -1)
         ) 
@@ -118,7 +164,7 @@ class Warehouse(RobotariumEnv):
         # update pose
         updated_pose = self._robotarium_step(poses, actions)
         state = state.replace(
-            p_pos=jnp.vstack([updated_pose, state.p_pos[self.num_agents:, :]]),
+            p_pos=jnp.vstack([updated_pose, updated_prey_pose]),
         )
 
         # check for violations
@@ -127,29 +173,14 @@ class Warehouse(RobotariumEnv):
         # get reward
         reward = self.rewards(state)
 
-        # unload
-        bounds = self.robotarium.boundaries # lower left point / width / height
-        able_to_unload = jnp.bitwise_and(state.p_pos[:, 0] < (bounds[0] + self.zone_width), state.payload > 0)
-        green_unload = jnp.bitwise_and(jnp.bitwise_and(state.p_pos[:, 1] > 0, state.het_rep[:,0]), able_to_unload)
-        red_unload = jnp.bitwise_and(jnp.bitwise_and(state.p_pos[:, 1] < 0, state.het_rep[:,1]), able_to_unload)
-        payload = jnp.where(jnp.logical_or(green_unload, red_unload), 0, state.payload)
-        green_deliveries = jnp.sum(green_unload*1)
-        red_deliveries = jnp.sum(red_unload*1)
-        state = state.replace(
-            zone1_load=state.zone1_load + green_deliveries,
-            zone2_load=state.zone2_load + red_deliveries
-        )
+        # update tagged state
+        agent_pos = state.p_pos[:self.num_agents, :2]  # get x, y of only tagging agents
+        dist = jnp.linalg.norm(agent_pos - state.p_pos[self.num_agents, :2], axis=-1)    # get dist from all tagging agents to prey
+        tagged = dist < self.tag_radius # compare to tag radius.
 
-        # load
-        bounds = self.robotarium.boundaries # lower left point / width / height
-        able_to_load = jnp.bitwise_and(state.p_pos[:, 0] > (bounds[0] + bounds[2] - self.zone_width), state.payload == 0)
-        green_load = jnp.bitwise_and(jnp.bitwise_and(state.p_pos[:, 1] < 0, state.het_rep[:,0]), able_to_load)
-        red_load = jnp.bitwise_and(jnp.bitwise_and(state.p_pos[:, 1] > 0, state.het_rep[:,1]), able_to_load)
-        payload = jnp.where(jnp.logical_or(red_load, green_load), 1, payload)
+        # update tag count
+        state = state.replace(landmark_tagged=state.landmark_tagged + tagged.any()*1) # multiplied by 1 to get conversion to int
 
-        # update payload
-        state = state.replace(payload=payload)
-        
         obs = self.get_obs(state)
 
         # set dones
@@ -162,17 +193,17 @@ class Warehouse(RobotariumEnv):
         info = {
             'collision': jnp.full((self.num_agents,), violations['collision']),
             'boundary': jnp.full((self.num_agents,), violations['boundary']),
-            'deliveries_made': jnp.full((self.num_agents,), state.zone1_load + state.zone2_load),
+            'prey_tagged': jnp.full((self.num_agents,), jnp.sum(state.landmark_tagged)),
         }
 
         dones = {a: done[i] for i, a in enumerate(self.agents)}
         dones.update({"__all__": jnp.all(done)})
 
         return obs, state, reward, dones, info
-
+    
     def rewards(self, state: State) -> Dict[str, float]:
         """
-        Assigns rewards, (shaping reward for loading + shaping reward for unloading + violation penalty).
+        Assigns rewards, (shaping reward for tag + violation penalty).
         
         Args:
             state: (State) environment state
@@ -181,21 +212,13 @@ class Warehouse(RobotariumEnv):
             (Dict[str, float]) agent rewards
         """
 
-        # unload
-        bounds = self.robotarium.boundaries # lower left point / width / height
-        able_to_unload = jnp.bitwise_and(state.p_pos[:, 0] < (bounds[0] + self.zone_width), state.payload > 0)
-        green_unload = jnp.bitwise_and(jnp.bitwise_and(state.p_pos[:, 1] > 0, state.het_rep[:,0]), able_to_unload)
-        red_unload = jnp.bitwise_and(jnp.bitwise_and(state.p_pos[:, 1] < 0, state.het_rep[:,1]), able_to_unload)
-        green_deliveries = jnp.sum(green_unload*1)
-        red_deliveries = jnp.sum(red_unload*1)
+        # check if prey tagged
+        agent_pos = state.p_pos[:self.num_agents, :2]  # get x, y of only tagging agents
+        dist = jnp.linalg.norm(agent_pos - state.p_pos[self.num_agents, :2], axis=-1)    # get dist from all tagging agents to prey
+        tagged = (dist < self.tag_radius).any()*1 # compare to tag radius
 
-        # load
-        bounds = self.robotarium.boundaries # lower left point / width / height
-        able_to_load = jnp.bitwise_and(state.p_pos[:, 0] > (bounds[0] + bounds[2] - self.zone_width), state.payload == 0)
-        green_load = jnp.bitwise_and(jnp.bitwise_and(state.p_pos[:, 1] < 0, state.het_rep[:,0]), able_to_load)
-        red_load = jnp.bitwise_and(jnp.bitwise_and(state.p_pos[:, 1] > 0, state.het_rep[:,1]), able_to_load)
-        green_loaded = jnp.sum(green_load*1)
-        red_loaded = jnp.sum(red_load*1)
+        # compute task reward
+        rew = tagged * self.tag_shaping
 
         # global penalty for collisions and boundary violation
         violations = self._get_violations(state)
@@ -203,14 +226,11 @@ class Warehouse(RobotariumEnv):
         boundaries = violations['boundary']
         violation_rew = self.violation_shaping * (collisions + boundaries)
 
-        rew = (green_loaded + red_loaded) * self.load_shaping \
-            + (green_deliveries + red_deliveries) * self.dropoff_shaping \
-        
         return {agent: jnp.where(violation_rew == 0, rew, violation_rew) for _, agent in enumerate(self.agents)}
-    
+
     def get_obs(self, state: State) -> Dict:
         """
-        Get observation (ego_pos, other_pos, zone loads, het_rep)
+        Get observation (ego_pos, other_pos, prey_pos)
 
         Args:
             state: (State) environment state
@@ -237,19 +257,23 @@ class Warehouse(RobotariumEnv):
             ego_pos = other_pos[0]
             other_pos = other_pos[1:]
 
+            # get location of prey
+            prey_pos = state.p_pos[self.num_agents, :]
+
             obs = jnp.concatenate([
                 ego_pos.flatten(),  # 3
                 other_pos.flatten(),  # num_agents-1, 3
+                prey_pos.flatten(), # num_landmarks, 3
             ])
 
             return obs
 
-        return {a: self.het_manager.process_obs(_obs(i), state, i) for i, a in enumerate(self.agents)}
+        return {a: _obs(i) for i, a in enumerate(self.agents)}
     
     #-----------------------------------------
     # Visualization Specific Functions (NOT INTENDED TO BE JITTED)
     #-----------------------------------------
-    
+
     def render_frame(self, state: State):
         """
         Updates visualizer figure to include goal position markers
@@ -260,45 +284,53 @@ class Warehouse(RobotariumEnv):
         
         # reset markers if at first step
         if state.step == 1:
+            self.prey_marker = None
             self.robot_markers = []
-            self.zone_markers = []
+            self.prev_tag_count = 0
         
-        # add markers for robots, wider is larger load
-        poses = state.p_pos
+        robots = state.p_pos[:self.num_agents, :2]
+        prey = state.p_pos[self.num_agents, :2].flatten()
+
+        # add marker for prey     
+        if not self.prey_marker:
+            self.prey_marker = self.visualizer.axes.scatter(
+                jnp.array(prey[0]),
+                jnp.array(prey[1]),
+                marker='.',
+                s=self.determine_marker_size(.15),
+                facecolors='green',
+                zorder=-2
+        )
+        
+        # add markers for robots
         if not self.robot_markers:
             # green for sensing
             self.robot_markers = [
                 self.visualizer.axes.scatter(
-                    jnp.array(poses[i, 0]),
-                    jnp.array(poses[i, 1]),
+                    jnp.array(robots[i, 0]),
+                    jnp.array(robots[i, 1]),
                     marker='o',
-                    s=self.determine_marker_size(0.15),
+                    s=self.determine_marker_size(self.tag_radius),
                     facecolors='none',
-                    edgecolors='green' if state.het_rep[i, 0] else 'red',
+                    edgecolors='black',
+                    zorder=-2,
                     linewidth=3
                 ) for i in range(self.num_agents)
             ]
         
-        # add zones
-        if not self.zone_markers:
-            self.zone_markers.append(self.visualizer.axes.add_patch(
-                patches.Rectangle([-1.5, 0], self.zone_width, 1, color='green', zorder=-2)
-            ))
-            self.zone_markers.append(self.visualizer.axes.add_patch(
-                patches.Rectangle([-1.5, -1], self.zone_width, 1, color='red', zorder=-2)
-            ))
-            self.zone_markers.append(self.visualizer.axes.add_patch(
-                patches.Rectangle([1.5-self.zone_width, 0], self.zone_width, 1, color='red', zorder=-2)
-            ))
-            self.zone_markers.append(self.visualizer.axes.add_patch(
-                patches.Rectangle([1.5-self.zone_width, -1], self.zone_width, 1, color='green', zorder=-2)
-            ))
-        
         # update robot marker positions
         for i in range(self.num_agents):
-            self.robot_markers[i].set_offsets(poses[i, :2])
-            self.robot_markers[i].set_facecolor('gray' if state.payload[i] else 'none')
-
+            self.robot_markers[i].set_offsets(robots[i])
+        
+        # update prey marker position
+        self.prey_marker.set_offsets(prey)
+        
+        # if tag count grew, update prey marker color
+        if state.landmark_tagged > self.prev_tag_count:
+            self.prey_marker.set_facecolor('red')
+            self.prev_tag_count = state.landmark_tagged
+        else:
+            self.prey_marker.set_facecolor('green')
 
     #-----------------------------------------
     # Deployment Specific Functions
@@ -314,22 +346,19 @@ class Warehouse(RobotariumEnv):
             (jnp.ndarray) initial poses (3xN) for robots
         """
 
-        # randomly generate initial poses for robots
+        # randomly generate initial poses for robots and prey
         poses = generate_initial_conditions(
-            self.num_agents,
+            self.num_agents+1,
             width=ROBOTARIUM_WIDTH,
             height=ROBOTARIUM_HEIGHT,
             spacing=0.5,
         )
-
+        
         state = State(
             p_pos=poses.T,
             done=jnp.full((self.num_agents), False),
             step=0,
-            het_rep = self.het_manager.sample(None),
-            payload = jnp.full((self.num_agents,), 0),
-            zone1_load = 0,
-            zone2_load = 0
+            landmark_tagged = jnp.full((1,), 0) # track number of times prey is tagged
         )
 
         return state

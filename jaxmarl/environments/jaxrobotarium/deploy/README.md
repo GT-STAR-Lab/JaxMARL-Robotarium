@@ -66,5 +66,7 @@
     * currently have implemented conversions for `Dense` and `GRUCell`
     * see `flax_to_torch` in `deploy.py` for implementation details and to implement additional layer types
 
+For an example of how to test a model conversion, see the provided example in `deploy/test`.
+
 ## Miscellaneous
 * To verify your experiment will run, you can run the `main.py` file within your generated experiment folder and confirm no exceptions are thrown, etc. Additionally, you can set `"save_gif"` to true to see what your executed experiment will look like.

@@ -2,8 +2,8 @@ import unittest
 import jax
 import jax.numpy as jnp
 
-from jaxmarl.environments.marbler.robotarium_env import State
-from jaxmarl.environments.marbler.scenarios.rware import RWARE
+from jaxmarl.environments.jaxrobotarium.robotarium_env import State
+from jaxmarl.environments.jaxrobotarium.scenarios.rware import RWARE
 
 VISUALIZE = False
 

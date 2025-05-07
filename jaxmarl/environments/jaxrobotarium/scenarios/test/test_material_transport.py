@@ -2,29 +2,37 @@ import unittest
 import jax
 import jax.numpy as jnp
 
-from jaxmarl.environments.marbler.robotarium_env import State
-from jaxmarl.environments.marbler.scenarios.warehouse import Warehouse
+from jaxmarl.environments.jaxrobotarium.robotarium_env import State
+from jaxmarl.environments.jaxrobotarium.scenarios.material_transport import MaterialTransport
 
 VISUALIZE = False
 
-class TestWarehouse(unittest.TestCase):
-    """unit tests for test_warehouse.py"""
+class TestMaterialTransport(unittest.TestCase):
+    """unit tests for test_material_transport.py"""
 
     def setUp(self):
         self.num_agents = 2
         self.batch_size = 10
-        self.env = Warehouse(
+        self.env = MaterialTransport(
             num_agents=self.num_agents,
             action_type="Discrete",
             max_steps=70,
             update_frequency=1,
             time_shaping=0,
             heterogeneity={
-                'type': 'class',
-                'obs_type': 'class',
-                'values': [[1, 0], [0, 1]],
+                'type': 'capability_set',
+                'obs_type': 'full_capability_set',
+                'values': [[.45, 5], [.15, 15]],
                 'sample': False
             },
+            zone1_dist = {
+                'mu': 50,
+                'sigma': 1
+            },
+            zone2_dist = {
+                'mu': 10,
+                'sigma': 1
+            }
         )
         self.key = jax.random.PRNGKey(0)
     
@@ -35,14 +43,26 @@ class TestWarehouse(unittest.TestCase):
         
         self.assertTrue(~jnp.all(state.done))
         self.assertTrue(~jnp.all(state.payload))
-        self.assertTrue(state.zone1_load == 0)
-        self.assertTrue(state.zone2_load == 0)
+        self.assertTrue(state.zone1_load > 0)
+        self.assertTrue(state.zone2_load > 0)
         self.assertTrue(state.p_pos.shape == (self.num_agents, 3))
         self.assertTrue(state.step == 0)
     
+    def test_decode_action(self):
+        _, state = self.env.reset(self.key)
+        actions = {str(f'agent_{i}'): self.env._decode_discrete_action(i, jnp.array([1]), state) for i in range(self.num_agents)}
+
+        # agent 0
+        expected_action = state.p_pos[0, :2] + state.het_rep[0, 0] * jnp.array([[0, 1]])
+        self.assertTrue(jnp.array_equal(expected_action, actions['agent_0']))
+
+        # agent 1
+        expected_action = state.p_pos[1, :2] + state.het_rep[1, 0] * jnp.array([[0, 1]])
+        self.assertTrue(jnp.array_equal(expected_action, actions['agent_1'])) 
+    
     def test_step(self):
         _, state = self.env.reset(self.key)
-        p_pos = jnp.array([[1.25, -0.5, 0], [-1.25, -0.5, 0]])
+        p_pos = jnp.array([[0.0, 0, 0], [-1.25, 0, 0]])
         state = state.replace(
             p_pos = p_pos,
             payload = jnp.array([0, 1])
@@ -50,21 +70,40 @@ class TestWarehouse(unittest.TestCase):
         actions = {str(f'agent_{i}'): jnp.array([0]) for i in range(self.num_agents)}
         new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
 
-        # check number delivered updates for red zone and payloads update
+        # check payloads and loads update for zone 1
         self.assertTrue(jnp.array_equal(new_state.payload, jnp.array([1, 0])))
-        self.assertAlmostEqual(new_state.zone1_load - state.zone1_load, 0)
-        self.assertAlmostEqual(new_state.zone2_load - state.zone2_load, 1)
+        self.assertAlmostEqual(state.zone1_load - new_state.zone1_load, state.het_rep[0, 1])
+        self.assertAlmostEqual(state.zone2_load - new_state.zone2_load, 0)
 
         state = new_state
         actions = {str(f'agent_{i}'): jnp.array([0]) for i in range(self.num_agents)}
         new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
+
+        # check payloads and loads update for zone 2
+        p_pos = jnp.array([[1.25, 0, 0], [-1.25, 0, 0]])
+        state = new_state.replace(
+            p_pos = p_pos,
+            payload = jnp.array([0, 1])
+        )
+        new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
+        self.assertTrue(jnp.array_equal(new_state.payload, jnp.array([1, 0])))
+        self.assertAlmostEqual(state.zone1_load - new_state.zone1_load, 0)
+        self.assertAlmostEqual(state.zone2_load - new_state.zone2_load, state.het_rep[0, 1])
+
+        # check payload remains the same and loads remain the same
+        state = new_state
+        actions = {str(f'agent_{i}'): jnp.array([0]) for i in range(self.num_agents)}
+        new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
+        self.assertTrue(jnp.array_equal(new_state.payload, jnp.array([1, 0])))
+        self.assertAlmostEqual(state.zone1_load, new_state.zone1_load)
+        self.assertTrue(state.zone2_load - new_state.zone2_load == 0)
 
         for i in range(self.num_agents):
             self.assertFalse(dones[f'agent_{i}'])
         
     def test_reward(self):
         _, state = self.env.reset(self.key)
-        p_pos = jnp.array([[1.25, -0.5, 0], [-1.25, -0.5, 0]])
+        p_pos = jnp.array([[0.0, 0, 0], [-1.25, 0, 0]])
         state = state.replace(
             p_pos = p_pos,
             payload = jnp.array([0, 1])
@@ -72,8 +111,8 @@ class TestWarehouse(unittest.TestCase):
         actions = {str(f'agent_{i}'): jnp.array([0]) for i in range(self.num_agents)}
         new_obs, new_state, rewards, dones, infos = self.env.step(self.key, state, actions)
 
-        self.assertEqual(rewards['agent_0'], self.env.load_shaping+self.env.dropoff_shaping)
-        self.assertEqual(rewards['agent_1'], self.env.load_shaping+self.env.dropoff_shaping)
+        self.assertEqual(rewards['agent_0'], 1)
+        self.assertEqual(rewards['agent_1'], 1)
 
         state = new_state
         actions = {str(f'agent_{i}'): jnp.array([0]) for i in range(self.num_agents)}
@@ -84,7 +123,7 @@ class TestWarehouse(unittest.TestCase):
     
     def test_get_obs(self):
         _, state = self.env.reset(self.key)
-        p_pos = jnp.array([[1.25, 0.5, 0], [-1.25, 0.5, 0]])
+        p_pos = jnp.array([[0.0, 0, 0], [-1.25, 0, 0]])
         state = state.replace(
             p_pos = p_pos,
             payload = jnp.array([0, 1])
@@ -92,36 +131,37 @@ class TestWarehouse(unittest.TestCase):
         obs = self.env.get_obs(state)
         
         # agent 0
-        expected_obs = jnp.array([1.25, 0.5, 0, -1.25, 0.5, 0])
+        expected_obs = jnp.array([0.0, 0, 0, -1.25, 0, 0, state.zone1_load[0], state.zone2_load[0]])
         self.assertTrue(
             jnp.array_equal(obs['agent_0'][:-self.env.het_manager.dim_h], expected_obs)
         )
 
-        # agent 1
-        expected_obs = jnp.array([-1.25, 0.5, 0, 1.25, 0.5, 0])
+        # agent 0
+        expected_obs = jnp.array([-1.25, 0, 0, 0.0, 0, 0, state.zone1_load[0], state.zone2_load[0]])
         self.assertTrue(
             jnp.array_equal(obs['agent_1'][:-self.env.het_manager.dim_h], expected_obs)
         )
     
-    def test_initialize_robotarium_state(self):
-        state = self.env.initialize_robotarium_state(self.key)
-        self.assertTrue(~jnp.all(state.done))
-        self.assertTrue(~jnp.all(state.payload))
-        self.assertTrue(state.p_pos.shape == (self.num_agents, 3))
-        self.assertTrue(state.step == 0)
-    
     def test_batched_rollout(self):
-        self.env = Warehouse(
+        self.env = MaterialTransport(
             num_agents=self.num_agents,
             action_type="Discrete",
             max_steps=70,
             update_frequency=1,
             time_shaping=0,
             heterogeneity={
-                'type': 'class',
-                'obs_type': 'class',
-                'values': [[1, 0], [0, 1]],
+                'type': 'capability_set',
+                'obs_type': 'full_capability_set',
+                'values': [[.45, 5], [.15, 15]],
                 'sample': False
+            },
+            zone1_dist = {
+                'mu': 50,
+                'sigma': 1
+            },
+            zone2_dist = {
+                'mu': 10,
+                'sigma': 1
             },
             controller = {
                 "controller": "clf_uni_position",
@@ -131,10 +171,6 @@ class TestWarehouse(unittest.TestCase):
         keys = jax.random.split(self.key, self.batch_size)
         _, state = jax.vmap(self.env.reset, in_axes=0)(keys)
         initial_state = state
-        payload = jnp.full((self.batch_size, self.num_agents), 1)
-        state = state.replace(
-            payload = payload
-        )
 
         def get_action(state):
             return {str(f'agent_{i}'): jnp.array([3]) for i in range(self.num_agents)}
@@ -151,7 +187,7 @@ class TestWarehouse(unittest.TestCase):
         # check that the robot moved
         for i in range(self.num_agents):
             self.assertGreater(
-                jnp.sqrt(jnp.sum((final_state.p_pos[i] - initial_state.p_pos[0])**2)),
+                jnp.sqrt(jnp.sum((final_state.p_pos.T[i][0] - initial_state.p_pos.T[i][0])**2)),
                 0
             )
         
@@ -166,7 +202,7 @@ class TestWarehouse(unittest.TestCase):
             render_batch = render_batch.replace(**fields)
             frames = self.env.render(render_batch, seed_index=0, env_index=0)
             frames[0].save(
-                'jaxmarl/environments/marbler/scenarios/test/warehouse.gif',
+                'jaxmarl/environments/marbler/scenarios/test/mt.gif',
                 save_all=True,
                 append_images=frames[1:],
                 duration=100,

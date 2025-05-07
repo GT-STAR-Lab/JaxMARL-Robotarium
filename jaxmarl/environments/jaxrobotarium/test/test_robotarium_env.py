@@ -1,7 +1,7 @@
 import unittest
 import jax
 import jax.numpy as jnp
-from jaxmarl.environments.marbler.robotarium_env import *
+from jaxmarl.environments.jaxrobotarium.robotarium_env import *
 
 class MockEnv(RobotariumEnv):
         def __init__(self, num_agents, max_steps=50, **kwargs):

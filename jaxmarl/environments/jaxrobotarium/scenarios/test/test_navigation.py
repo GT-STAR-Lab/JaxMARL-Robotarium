@@ -2,7 +2,7 @@ import unittest
 import jax
 import jax.numpy as jnp
 
-from jaxmarl.environments.marbler.scenarios.navigation import Navigation
+from jaxmarl.environments.jaxrobotarium.scenarios.navigation import Navigation
 
 VISUALIZE = False
 

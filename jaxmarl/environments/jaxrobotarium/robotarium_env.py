@@ -8,8 +8,8 @@ import chex
 from flax import struct
 from typing import Tuple, Optional, Dict
 
-from jaxmarl.environments.marbler.constants import *
-from jaxmarl.environments.marbler.robotarium_visualizer import *
+from jaxmarl.environments.jaxrobotarium.constants import *
+from jaxmarl.environments.jaxrobotarium.robotarium_visualizer import *
 from jaxmarl.environments.spaces import Box, Discrete
 
 from rps_jax.robotarium import *

@@ -1,10 +1,10 @@
-# MARBLER: Multi-Agent RL Benchmark and Learning Environment for the Robotarium
+# JaxRobotarium: Train and Deploy Multi-Robot Policies in 10 Minutes
 <p float="middle">
   <img src="figures/navigation.gif" width="40%" />
   <img src="figures/navigation_real.gif" width="53%" /> 
 </p>
 
-## Installation
+## Installation (assumes integration with JaxMARL as platform of choice)
 ### Install Jax and JaxMARL
 1. Create a conda env
     ```
@@ -29,7 +29,7 @@
     git submodule init
     git submodule update
     ```
-2. Install (within `jaxmarl/environments/marbler/robotarium_python_simulator)
+2. Install (within `jaxmarl/environments/jaxrobotarium/robotarium_python_simulator)
     ```
     pip install -e .
     ```
@@ -61,7 +61,7 @@ Callouts:
 ### Run Training
 **Example**: train a multi-robot navigation policy
 ```
-python baselines/QLearning/qmix_rnn.py +alg=ql_rnn_marbler
+python baselines/QLearning/qmix_rnn.py +alg=ql_rnn_navigation
 ```
 
 ## Deployment to Robotarium
@@ -71,7 +71,7 @@ See `README.md` in `deploy/` for detailed instructions on how to deploy to the R
 ### Unit Testing
 Each folder has a `test` folder to add unit tests for the files in that folder. For example to run unit tests for `navigation.py`, run,
 ```
-python -m unittest marbler/scenarios/test/test_navigation.py
+python -m unittest jaxrobotarium/scenarios/test/test_navigation.py
 ```
 
 ### Scenario Cross-Compatibility
@@ -79,7 +79,7 @@ In order to compatible with the Robotarium hardware platform, developed scenario
 ```
 # wrap import statement in try-except block to allow for correct import during deployment
 try:
-    from jaxmarl.environments.marbler.robotarium_env import *
+    from jaxmarl.environments.jaxrobotarium.robotarium_env import *
 except Exception as e:
     from robotarium_env import *
 ```
